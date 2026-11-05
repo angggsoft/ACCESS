@@ -1,0 +1,27 @@
+# Entorno y credenciales sensibles
+.env
+*.env.local
+
+# Base de datos local
+*.db
+*.sqlite
+*.sqlite3
+
+# Capturas de cámara y pruebas
+captures/
+temp/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+venv/
+.venv/
+env/
+
+# IDE y sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

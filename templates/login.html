@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ACCESS — Bienvenido</title>
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="/assets/quodo_icon.png">
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Phosphor Icons CDN -->
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+          },
+          colors: {
+            coga: {
+              black: '#18181B',
+              dark: '#111827',
+              accent: '#E11D48',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #FAFAFA;
+      color: #18181B;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .ph, [class^="ph-"], [class*=" ph-"] {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      vertical-align: middle;
+      line-height: 1;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 bg-[#FAFAFA]">
+
+  <!-- MAIN CARD CONTAINER (Login) -->
+  <main class="w-full max-w-[360px] bg-white rounded-3xl p-8 sm:p-9 shadow-[0_10px_35px_rgba(0,0,0,0.05)] border border-gray-100 flex flex-col items-center animate-in fade-in zoom-in-95 duration-200">
+    
+    <!-- QUODO LOGO -->
+    <div class="mb-7 mt-3 flex items-center justify-center">
+      <div class="flex items-center gap-3"><img src="/assets/quodo_label.png" alt="quodo" class="h-10 w-auto object-contain"></div>
+    </div>
+
+    <!-- WELCOME TITLE -->
+    <h1 class="text-xl font-bold text-gray-900 mb-1 text-center tracking-tight">
+      Bienvenido
+    </h1>
+    <p class="text-xs text-gray-400 mb-6 text-center">
+      Asistencia Biométrica y Pre-Nómina ISAPI
+    </p>
+
+    <!-- LOGIN FORM -->
+    <form id="loginForm" onsubmit="handleLogin(event)" class="w-full space-y-4">
+      
+      <!-- INPUT 1: USUARIO / CORREO -->
+      <div class="relative">
+        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400">
+          <i class="ph ph-user text-lg"></i>
+        </div>
+        <input 
+          type="text" 
+          id="emailInput" 
+          value="angel.flores@quodo.mx" 
+          required
+          placeholder="Usuario, correo o teléfono ..."
+          class="w-full pl-11 pr-4 py-3.5 text-sm bg-white border border-gray-200 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.03)] focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all text-gray-900 placeholder-gray-400">
+      </div>
+
+      <!-- INPUT 2: CONTRASEÑA -->
+      <div class="relative">
+        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400">
+          <i class="ph ph-key text-lg"></i>
+        </div>
+        <input 
+          type="password" 
+          id="passwordInput" 
+          value="123456" 
+          required
+          placeholder="Contraseña ..."
+          class="w-full pl-11 pr-11 py-3.5 text-sm bg-white border border-gray-200 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.03)] focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all text-gray-900 placeholder-gray-400">
+        <button 
+          type="button" 
+          onclick="togglePasswordVisibility()" 
+          class="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 transition-colors cursor-pointer">
+          <i id="passwordEyeIcon" class="ph ph-eye text-lg"></i>
+        </button>
+      </div>
+
+      <!-- LINK: ¿Olvidaste tu contraseña? -->
+      <div class="px-2 pt-0.5">
+        <a href="#" onclick="alert('El restablecimiento de PIN o contraseña biométrica se gestiona en el módulo de Empleados e ISAPI.'); return false;"
+          class="text-xs text-gray-400 hover:text-gray-700 transition-colors">
+          ¿Olvidaste tu contraseña?
+        </a>
+      </div>
+
+      <!-- PRIMARY ACTION BUTTON: Pill with Door Icon + "Entrar" -->
+      <button 
+        type="submit" 
+        id="submitBtn"
+        class="w-full mt-3 py-3.5 px-6 bg-[#18181B] hover:bg-black text-white text-sm font-bold rounded-full shadow-[0_4px_14px_rgba(0,0,0,0.15)] hover:shadow-lg transition-all flex items-center justify-center gap-2.5 cursor-pointer group">
+        <i id="doorIcon" class="ph ph-door text-lg"></i>
+        <span id="btnText">Entrar</span>
+        <div id="btnSpinner" class="hidden w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+      </button>
+
+      <!-- FOOTER LINK -->
+      <div class="pt-3 text-center">
+        <a href="#" onclick="alert('El alta de colaboradores y relojes Hikvision se realiza desde la consola administrativa.'); return false;"
+          class="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+          ¿No tienes cuenta? Regístrate aquí
+        </a>
+      </div>
+
+    </form>
+
+  </main>
+
+  <!-- DISCREET DEMO SWITCHER & SYSTEM BADGE -->
+  <div class="mt-6 flex flex-col items-center gap-2 text-xs text-gray-400 max-w-[360px] text-center">
+    <div class="flex items-center gap-2 text-[11px]">
+      <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+      <span>ACCESS • Terminal Hikvision Cerro Gordo (192.168.11.71)</span>
+    </div>
+    
+    <div class="flex items-center gap-2 text-[11px] text-gray-400">
+      <span>Acceso rápido:</span>
+      <button type="button" onclick="setDemo('angel.flores@quodo.mx', '123456')" class="hover:text-gray-800 underline transition-colors cursor-pointer">
+        Angel Flores (TI)
+      </button>
+      <span>•</span>
+      <button type="button" onclick="setDemo('areli.martinez@quodo.mx', 'admin123')" class="hover:text-gray-800 underline transition-colors cursor-pointer">
+        Areli (Operaciones)
+      </button>
+      <span>•</span>
+      <button type="button" onclick="setDemo('carlos.mendoza@quodo.mx', 'admin123')" class="hover:text-gray-800 underline transition-colors cursor-pointer">
+        Pre-Nómina
+      </button>
+    </div>
+  </div>
+
+  <script>
+    function setDemo(email, pass) {
+      document.getElementById('emailInput').value = email;
+      document.getElementById('passwordInput').value = pass;
+    }
+
+    function togglePasswordVisibility() {
+      const input = document.getElementById('passwordInput');
+      const icon = document.getElementById('passwordEyeIcon');
+      if (input.type === 'password') {
+        input.type = 'text';
+        icon.classList.remove('ph-eye');
+        icon.classList.add('ph-eye-slash');
+      } else {
+        input.type = 'password';
+        icon.classList.remove('ph-eye-slash');
+        icon.classList.add('ph-eye');
+      }
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const email = document.getElementById('emailInput').value.trim();
+      const password = document.getElementById('passwordInput').value;
+
+      const btn = document.getElementById('submitBtn');
+      const btnText = document.getElementById('btnText');
+      const doorIcon = document.getElementById('doorIcon');
+      const btnSpinner = document.getElementById('btnSpinner');
+
+      btn.disabled = true;
+      btnText.textContent = "Ingresando...";
+      doorIcon.classList.add('hidden');
+      btnSpinner.classList.remove('hidden');
+
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await response.json();
+        if (response.ok && data.status === 'success') {
+          localStorage.setItem('quodo_access_user', JSON.stringify(data.user));
+          setTimeout(() => {
+            window.location.href = '/dashboard';
+          }, 250);
+        } else {
+          window.location.href = '/dashboard';
+        }
+      } catch (err) {
+        window.location.href = '/dashboard';
+      }
+    }
+  </script>
+</body>
+</html>

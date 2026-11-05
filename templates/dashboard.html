@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ACCESS — Sistema de Asistencia Biométrica y Pre-Nómina</title>
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="/assets/quodo_icon.png">
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script>
+    const _origWarn = console.warn;
+    console.warn = function(...args) {
+      if (args[0] && typeof args[0] === 'string' && args[0].includes('cdn.tailwindcss.com')) return;
+      _origWarn.apply(console, args);
+    };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Phosphor Icons CDN -->
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            offwhite: '#F9FAFB',
+            surface: '#FFFFFF',
+            charcoal: {
+              50: '#F4F4F5',
+              100: '#E4E4E7',
+              200: '#D4D4D8',
+              300: '#A1A1AA',
+              400: '#71717A',
+              500: '#52525B',
+              600: '#3F3F46',
+              700: '#27272A',
+              800: '#1F2937',
+              900: '#18181B',
+              950: '#0B0F17',
+            }
+          },
+          boxShadow: {
+            '2xs': '0 1px 2px 0 rgba(0, 0, 0, 0.03)',
+            'xs': '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    html, body {
+      height: 100%;
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #E9ECF1;
+      color: #18181B;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .mono-code {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .ph, [class^="ph-"], [class*=" ph-"] {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      vertical-align: middle;
+      line-height: 1;
+    }
+    .sidebar-transition {
+      transition: width 220ms cubic-bezier(0.4, 0, 0.2, 1);
+      will-change: width;
+    }
+
+    /* Dynamic Island */
+    .dynamic-island {
+      border-radius: 22px;
+      overflow: hidden;
+      isolation: isolate;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.10), 0 6px 20px rgba(0,0,0,0.22);
+      transition:
+        width 420ms cubic-bezier(0.32, 0.72, 0, 1),
+        box-shadow 420ms ease,
+        background-color 200ms ease;
+      will-change: width;
+    }
+    .dynamic-island.is-compact { cursor: pointer; }
+    .dynamic-island.is-compact:hover { background-color: #18181B; }
+    .dynamic-island.is-expanded {
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.14), 0 28px 70px rgba(0,0,0,0.55);
+      transition:
+        width 560ms cubic-bezier(0.22, 1, 0.36, 1),
+        box-shadow 560ms ease,
+        background-color 200ms ease;
+    }
+
+    .island-body {
+      display: grid;
+      grid-template-rows: 0fr;
+      opacity: 0;
+      transition:
+        grid-template-rows 420ms cubic-bezier(0.32, 0.72, 0, 1),
+        opacity 150ms ease-out;
+    }
+    .island-body.is-expanded {
+      grid-template-rows: 1fr;
+      opacity: 1;
+      transition:
+        grid-template-rows 560ms cubic-bezier(0.22, 1, 0.36, 1),
+        opacity 320ms ease-out 120ms;
+    }
+    .island-body-clip { overflow: hidden; min-height: 0; }
+    .island-body-content {
+      position: relative;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #D4D4D8;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #A1A1AA;
+    }
+    [v-cloak] {
+      display: none !important;
+    }
+
+    .modal-backdrop-anim {
+      animation: modalBackdropFade 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes modalBackdropFade {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    .modal-card-anim {
+      animation: modalScaleUp 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes modalScaleUp {
+      from {
+        opacity: 0;
+        transform: scale(0.95) translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+    @keyframes rowHighlight {
+      0% { background-color: #ECFDF5; }
+      100% { background-color: transparent; }
+    }
+    .new-row-flash {
+      animation: rowHighlight 2.2s ease-out;
+    }
+  </style>
+
+  <!-- ES Module Import Map for Vue 3 Production Build -->
+  <script type="importmap">
+    {
+      "imports": {
+        "vue": "/assets/vendor/vue.esm-browser.prod.js"
+      }
+    }
+  </script>
+</head>
+<body class="h-screen w-screen flex flex-col select-none overflow-hidden bg-offwhite">
+
+  <!-- Vue 3 Root Application Mount -->
+  <div id="app" v-cloak class="h-full w-full"></div>
+
+  <!-- Main Vue 3 Application Script -->
+  <script type="module" src="/assets/js/app.js?v=20261105_08"></script>
+
+</body>
+</html>
