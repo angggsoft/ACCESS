@@ -1,94 +1,87 @@
-# Arquitectura de Integración Biométrica Hikvision ISAPI para SaaS de Asistencia y Pre-Nómina
+# ACCESS — Sistema de Control de Asistencia Biométrica y Pre-Nómina
 
-Este repositorio implementa y valida el conjunto de pruebas técnicas para la integración de hardware biométrico **Hikvision DS-K1T320MFWX-B** (y terminales compatibles de la serie MinMoe) con una plataforma SaaS de control de asistencia, incidencias y cálculo de pre-nómina.
+ACCESS es una plataforma integral para la gestión y captura de checadas en tiempo real con terminales biométricas **Hikvision DS-K1T320MFWX-B** (y serie MinMoe compatible), control de incidencias, filtros anti-rebote inteligentes y exportación consolidada para pre-nómina.
 
 ---
 
-## 1. Arquitectura de Ingesta de Checadas
+## 1. Arquitectura de Ingesta Dual (Push + Pull)
 
-Para garantizar alta disponibilidad y tolerancia a fallas de red en clientes corporativos e industriales, se implementa una arquitectura híbrida:
+Para garantizar alta disponibilidad y cero pérdida de checadas en entornos operativos:
 
 ```mermaid
 graph TD
-    subgraph Edge["Dispositivo Físico (192.168.11.195)"]
-        Terminal["Hikvision DS-K1T320MFWX-B"]
-        Memoria["Memoria Flash Interna (AcsEvents)"]
+    subgraph Hardware["Terminal Biométrica Física (Hikvision MinMoe)"]
+        Terminal["Reloj Checador (192.168.11.71)"]
+        Memoria["Memoria Interna Flash (100,000 eventos)"]
     end
 
-    subgraph Backend["SaaS Backend (FastAPI / Python)"]
-        PushSrv["test_event_push_server.py<br/>(HTTP Listening Webhook)"]
-        PullSrv["test_pull_events.py<br/>(Cron / Polling de Recuperación)"]
-        DB[(Base de Datos Asistencia / Pre-nómina)]
+    subgraph Backend["ACCESS Core (FastAPI / Python)"]
+        PushSrv["Receptor Push Webhook<br/>(/api/v1/webhooks/hikvision)"]
+        PullSrv["Motor Auto-Pull en Segundo Plano<br/>(ISAPI AcsEvents cada 4s)"]
+        Filter["Filtro Inteligente Anti-Rebote (Debounce)"]
+        DB[(Base de Datos SQLite: access.db)]
     end
 
-    Terminal -- "1. Push en Tiempo Real (Multipart XML/JSON + Foto JPG)" --> PushSrv
-    PushSrv --> DB
+    subgraph Frontend["Panel de Control Ejecutivo (Vue 3 / Tailwind)"]
+        Dashboard["Inicio, KPIs y Gráfica 14 Días"]
+        Monitor["Monitor de Checadas en Vivo"]
+        Config["Centro de Configuración y Minitutorial"]
+    end
+
+    Terminal -- "1. Push en Tiempo Real (< 1s)" --> PushSrv
+    PushSrv --> Filter
     Terminal --> Memoria
-    Memoria -- "2. Pull Offline / Reconciliación (POST /ISAPI/AccessControl/AcsEvent)" --> PullSrv
-    PullSrv --> DB
+    Memoria -- "2. Auto-Pull de Respaldo" --> PullSrv
+    PullSrv --> Filter
+    Filter --> DB
+    DB --> Dashboard
+    DB --> Monitor
+    Config -. "Parámetros y Calibración" .-> Backend
 ```
 
-1. **Patrón Push (Tiempo Real)**: El reloj envía cada checada instantáneamente al endpoint HTTP del SaaS usando `multipart/form-data`, adjuntando los metadatos y la fotografía del rostro capturada para validación antispoofing y auditoría.
-2. **Patrón Pull (Offline Recovery / Reconciliación)**: Si el internet o la red local se interrumpe, el reloj almacena hasta 100,000 eventos en su memoria no volátil. El script `test_pull_events.py` ejecuta consultas paginadas a `POST /ISAPI/AccessControl/AcsEvent` para descargar y procesar las checadas faltantes sin pérdida de datos.
+1. **Patrón Push (Tiempo Real)**: La terminal envía cada checada instantáneamente por HTTP multipart a ACCESS en cuanto el colaborador coloca su huella o rostro.
+2. **Patrón Pull (Auto-Pull de Respaldo)**: Un poller en segundo plano consulta la memoria del checador cada 4 segundos para asegurar que no se pierda ningún evento ante caídas de Wi-Fi o micro-cortes.
+3. **Filtro Anti-Rebote (Debounce Dinámico)**: Si un colaborador checa dos o más veces seguidas por duda o distracción (ej. dentro de los 180 segundos), el sistema clasifica las repeticiones como "REBOTE IGNORADO" y preserva una única checada válida para pre-nómina.
 
 ---
 
-## 2. Estructura de Archivos
+## 2. Estructura del Proyecto
 
-| Archivo | Propósito |
+| Archivo / Carpeta | Propósito |
 | :--- | :--- |
-| [`.env`](file:///c:/Users/TI/Documents/GitHub/ACCESS/.env) | Credenciales y parámetros de conexión (Host, Puerto, Usuario, Password). |
-| [`config.py`](file:///c:/Users/TI/Documents/GitHub/ACCESS/config.py) | Cargador de configuración y generación de URLs base ISAPI. |
-| [`test_isapi_connection.py`](file:///c:/Users/TI/Documents/GitHub/ACCESS/test_isapi_connection.py) | **Tarea 1**: Diagnóstico de red, modelo, firmware, MAC y extracción de plantilla de empleados. |
-| [`test_pull_events.py`](file:///c:/Users/TI/Documents/GitHub/ACCESS/test_pull_events.py) | **Tarea 2**: Extracción de eventos históricos almacenados en el reloj (`AcsEvent`). |
-| [`test_event_push_server.py`](file:///c:/Users/TI/Documents/GitHub/ACCESS/test_event_push_server.py) | Servidor FastAPI + Uvicorn receptor de webhooks push y fotos en tiempo real. |
-| [`simulate_push_event.py`](file:///c:/Users/TI/Documents/GitHub/ACCESS/simulate_push_event.py) | Generador de eventos de prueba simulados con foto para testeo del backend. |
+| [`run.py`](file:///c:/Users/TI/Documents/GitHub/ACCESS/run.py) | Punto de entrada del servidor de producción (FastAPI + Uvicorn). |
+| [`iniciar.bat`](file:///c:/Users/TI/Documents/GitHub/ACCESS/iniciar.bat) | Script para iniciar el sistema con 1 clic en Windows. |
+| [`main.py`](file:///c:/Users/TI/Documents/GitHub/ACCESS/main.py) | API REST, receptor de webhooks ISAPI, poller en segundo plano y endpoints. |
+| [`access.db`](file:///c:/Users/TI/Documents/GitHub/ACCESS/access.db) | Base de datos SQLite de producción (checadas, empleados, áreas, relojes y configuración). |
+| [`core/database.py`](file:///c:/Users/TI/Documents/GitHub/ACCESS/core/database.py) | Capa de persistencia, debounce anti-rebote, catálogos y gestión de parámetros. |
+| [`assets/js/`](file:///c:/Users/TI/Documents/GitHub/ACCESS/assets/js/) | Aplicación Vue 3 modular (Inicio, Monitor, Relojes, Empleados, Áreas, Reportes, Configuración, Minitutorial). |
+| [`templates/`](file:///c:/Users/TI/Documents/GitHub/ACCESS/templates/) | Vistas HTML (Login y Dashboard ejecutivo con Dynamic Island). |
+| [`setup_webhook_host.py`](file:///c:/Users/TI/Documents/GitHub/ACCESS/setup_webhook_host.py) | Utilidad para configurar el destinatario HTTP del checador vía ISAPI. |
+| [`sync_clock_time.py`](file:///c:/Users/TI/Documents/GitHub/ACCESS/sync_clock_time.py) | Utilidad CLI para calibrar la hora oficial del hardware. |
+| [`manage_employees.py`](file:///c:/Users/TI/Documents/GitHub/ACCESS/manage_employees.py) | Utilidad CLI para sincronización de empleados y biometría. |
 
 ---
 
-## 3. Configuración y Ejecución
+## 3. Puesta en Marcha
 
-### Paso 1: Configurar la Contraseña
-Abre el archivo [`.env`](file:///c:/Users/TI/Documents/GitHub/ACCESS/.env) y coloca la contraseña de administrador del reloj checador:
-```env
-HIK_HOST=192.168.11.195
-HIK_PORT=80
-HIK_USER=admin
-HIK_PASS=TuPasswordReal
+### Inicio Rápido (Recomendado)
+Haz doble clic sobre el archivo:
+```bat
+iniciar.bat
 ```
-*(También puedes pasar la contraseña directamente con el argumento `--password` en cada script).*
+O desde la consola PowerShell:
+```powershell
+python run.py
+```
 
-> [!WARNING]
-> Los dispositivos Hikvision cuentan con una directiva de bloqueo por seguridad: tras 5 intentos fallidos consecutivos de autenticación HTTP Digest, la cuenta de administrador se bloquea temporalmente por 30 minutos o hasta reiniciar el hardware. Asegúrate de verificar la contraseña antes de ejecutar en bucles automáticos.
+### URLs de Acceso
+- **Iniciar Sesión**: [http://localhost:8000/login](http://localhost:8000/login)
+- **Panel Principal**: [http://localhost:8000/dashboard](http://localhost:8000/dashboard)
+- **Receptor Webhook ISAPI**: `http://<IP_LOCAL>:8000/api/v1/webhooks/hikvision`
 
 ---
 
-### Paso 2: Ejecutar Diagnóstico de Red y Empleados (Tarea 1)
-```powershell
-python test_isapi_connection.py
-```
-**Operaciones verificadas:**
-1. `GET /ISAPI/System/deviceInfo` (Digest Auth): Extrae Modelo, Nombre, Número de Serie, Dirección MAC y Versión de Firmware.
-2. `POST /ISAPI/AccessControl/UserInfo/Search?format=json`: Obtiene el censo de empleados registrados en el reloj con su `employeeNo`, `name` y `userType`.
-
----
-
-### Paso 3: Extraer Historial de Checadas Offline (Tarea 2)
-```powershell
-python test_pull_events.py --max 30
-```
-**Operaciones verificadas:**
-1. `POST /ISAPI/AccessControl/AcsEvent?format=json` con filtros `major: 5` (Control de Acceso) y `minor: 0` (Todos).
-2. Normalización de formatos (lista u objeto individual) y mapeo de identificadores de evento (`75` = Reconocimiento facial, `38` = Huella, `1` = Tarjeta).
-
----
-
-### Paso 4 (Opcional): Probar Servidor Push en Tiempo Real
-En una terminal:
-```powershell
-python test_event_push_server.py
-```
-En otra terminal (o simulador):
-```powershell
-python simulate_push_event.py
-```
+## 4. Minitutorial y Centro de Configuración
+Dentro del sistema encontrarás:
+- Botón **"¿Cómo funciona?"** en la barra superior y lateral para consultar el minitutorial interactivo del ciclo de checado.
+- Módulo **"Configuración"** en el menú lateral para ajustar tiempos de anti-rebote, calibrar la hora del reloj en 1 clic y verificar el enlace ISAPI.

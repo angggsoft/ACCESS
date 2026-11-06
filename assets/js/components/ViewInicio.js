@@ -16,7 +16,7 @@ export default {
     isSyncing: { type: Boolean, default: false },
     user: { type: Object, default: () => ({ name: 'Angel Flores' }) }
   },
-  emits: ['navigate', 'sync-clock'],
+  emits: ['navigate', 'sync-clock', 'open-tutorial'],
   setup(props) {
     const firstName = computed(() => (props.user?.name || 'Angel').split(' ')[0]);
     const hoveredIndex = ref(null);
@@ -158,13 +158,22 @@ export default {
           <h2 class="text-3xl font-bold text-charcoal-900 tracking-tight">Hola, {{ firstName }}</h2>
           <p class="text-xs text-sky-600 mt-0.5">Panel de asistencia</p>
         </div>
-        <button
-          type="button"
-          @click="$emit('sync-clock')"
-          class="flex items-center gap-2 text-xs font-semibold text-charcoal-700 bg-white hover:bg-charcoal-50 px-4 py-2 rounded-xl border border-charcoal-200 shadow-2xs transition-all cursor-pointer shrink-0">
-          <i class="ph ph-arrows-clockwise text-sm" :class="{ 'animate-spin': isSyncing }"></i>
-          <span>{{ isSyncing ? 'Sincronizando…' : 'Sincronizar reloj' }}</span>
-        </button>
+        <div class="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            @click="$emit('open-tutorial')"
+            class="flex items-center gap-1.5 text-xs font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 px-3.5 py-2 rounded-xl border border-amber-200 shadow-2xs transition-all cursor-pointer">
+            <i class="ph ph-lightbulb text-sm text-amber-600"></i>
+            <span>¿Cómo funciona el proceso?</span>
+          </button>
+          <button
+            type="button"
+            @click="$emit('sync-clock')"
+            class="flex items-center gap-2 text-xs font-semibold text-charcoal-700 bg-white hover:bg-charcoal-50 px-4 py-2 rounded-xl border border-charcoal-200 shadow-2xs transition-all cursor-pointer">
+            <i class="ph ph-arrows-clockwise text-sm" :class="{ 'animate-spin': isSyncing }"></i>
+            <span>{{ isSyncing ? 'Sincronizando…' : 'Sincronizar reloj' }}</span>
+          </button>
+        </div>
       </div>
 
       <!-- 4 KPIs principales -->

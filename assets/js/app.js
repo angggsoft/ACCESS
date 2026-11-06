@@ -9,7 +9,9 @@ import ViewRelojes from './components/ViewRelojes.js';
 import ViewEmpleados from './components/ViewEmpleados.js';
 import ViewAreas from './components/ViewAreas.js';
 import ViewReportes from './components/ViewReportes.js';
+import ViewConfiguracion from './components/ViewConfiguracion.js';
 import ModalConfig from './components/ModalConfig.js';
+import ModalTutorial from './components/ModalTutorial.js';
 
 const App = {
   components: {
@@ -21,12 +23,15 @@ const App = {
     ViewEmpleados,
     ViewAreas,
     ViewReportes,
-    ModalConfig
+    ViewConfiguracion,
+    ModalConfig,
+    ModalTutorial
   },
   setup() {
     const activeModule = ref('inicio');
     const isSidebarCollapsed = ref(false);
     const isSyncing = ref(false);
+    const isTutorialOpen = ref(false);
 
     // System Config Modal
     const isConfigModalOpen = ref(false);
@@ -239,7 +244,45 @@ const App = {
         navigateTo('empleados');
       } else if (actionType === 'modal-area') {
         navigateTo('areas');
+      } else if (actionType === 'open-tutorial') {
+        isTutorialOpen.value = true;
+      } else if (actionType === 'test-clock-conn') {
+        testPrimaryClock();
       }
+    }
+
+    async function testPrimaryClock() {
+      try {
+        const devId = primaryClock.value.id || 1;
+        const res = await fetch(`/api/devices/${devId}/test-connection`, { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+          showToast({
+            title: `Conexión ISAPI Exitosa (${data.latency_ms} ms)`,
+            subtitle: `Hardware: ${data.modelo} • Firmware: ${data.firmware}`,
+            badge: 'ONLINE',
+            type: 'info'
+          });
+        } else {
+          showToast({
+            title: 'Fallo de enlace con el reloj',
+            subtitle: data.error || 'Verifique la IP y contraseña del checador',
+            badge: 'ERROR RED',
+            type: 'rebote'
+          });
+        }
+      } catch (e) {
+        showToast({
+          title: 'Error de red',
+          subtitle: String(e),
+          badge: 'ERROR',
+          type: 'rebote'
+        });
+      }
+    }
+
+    function onUpdateUser(newU) {
+      currentUser.value = { ...currentUser.value, ...newU };
     }
 
     function openConfigModal(section = 'perfil') {
@@ -276,6 +319,7 @@ const App = {
       isSyncing,
       isConfigModalOpen,
       configInitialSection,
+      isTutorialOpen,
       summary,
       records,
       devices,
@@ -296,7 +340,8 @@ const App = {
       handleQuickAction,
       onToast,
       exportRecordsCsv,
-      openConfigModal
+      openConfigModal,
+      onUpdateUser
     };
   },
   template: `
@@ -315,6 +360,7 @@ const App = {
         :live-count="summary.total_checadas || records.length"
         @toggle-sidebar="isSidebarCollapsed = !isSidebarCollapsed"
         @open-config="openConfigModal"
+        @open-tutorial="isTutorialOpen = true"
         @navigate="navigateTo"
       />
 
@@ -385,8 +431,20 @@ const App = {
             v-else-if="activeModule === 'reportes'"
             :records="records"
             :employees="employees"
+            :devices="devices"
+            :areas="areas"
             :summary="summary"
-            @export-csv="exportRecordsCsv"
+            @toast="onToast"
+          />
+
+          <ViewConfiguracion
+            v-else-if="activeModule === 'configuracion'"
+            :devices="devices"
+            :user="currentUser"
+            @toast="onToast"
+            @refresh="fetchOverview(false)"
+            @open-tutorial="isTutorialOpen = true"
+            @update-user="onUpdateUser"
           />
 
         </main>
@@ -428,6 +486,15 @@ const App = {
         :initial-section="configInitialSection"
         :user="currentUser"
         @close="isConfigModalOpen = false"
+        @navigate="navigateTo"
+        @open-tutorial="isTutorialOpen = true"
+        @update-user="onUpdateUser"
+      />
+
+      <!-- Minitutorial Interactivo para el Usuario -->
+      <ModalTutorial
+        :is-open="isTutorialOpen"
+        @close="isTutorialOpen = false"
       />
 
     </div>

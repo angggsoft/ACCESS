@@ -56,6 +56,16 @@ export const MODULES_NAV = [
     actions: [
       { id: 'export_payroll', label: 'Descargar Pre-Nómina CSV', icon: 'ph-file-csv', type: 'export-csv' }
     ]
+  },
+  { 
+    id: 'configuracion', 
+    title: 'Configuración del Sistema', 
+    shortLabel: 'Configuración', 
+    icon: 'ph-gear',
+    actions: [
+      { id: 'tutorial_open', label: '¿Cómo funciona? (Tutorial)', icon: 'ph-lightbulb', type: 'open-tutorial' },
+      { id: 'test_conn', label: 'Probar Conexión Reloj', icon: 'ph-plugs-connected', type: 'test-clock-conn' }
+    ]
   }
 ];
 
@@ -135,15 +145,21 @@ export default {
 
       </div>
 
-      <!-- SIDEBAR BOTTOM BADGE -->
-      <div class="p-3 border-t border-charcoal-200 bg-charcoal-50/60 shrink-0">
-        <div class="flex items-center gap-2.5 px-1 py-1" :class="{ 'justify-center': isCollapsed }">
-          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0 animate-pulse"></span>
-          <div v-show="!isCollapsed" class="truncate text-xs">
-            <p class="font-bold text-charcoal-900 leading-tight">{{ branchName }}</p>
-            <p class="text-[10px] text-charcoal-500 mono-code">{{ branchSubtitle }}</p>
-          </div>
-        </div>
+      <!-- BOTÓN RÁPIDO MINITUTORIAL -->
+      <div class="px-2 py-2 border-t border-charcoal-200/80 bg-white shrink-0">
+        <button
+          type="button"
+          @click="$emit('quick-action', 'open-tutorial')"
+          class="w-full h-9 flex items-center px-3 rounded-xl text-xs font-semibold text-charcoal-700 hover:text-charcoal-900 hover:bg-amber-50/80 transition-colors cursor-pointer group border border-transparent hover:border-amber-200"
+          :class="{ 'justify-center': isCollapsed }"
+          title="Ver Guía: ¿Cómo funciona todo el proceso?">
+          <span class="w-5 flex items-center justify-center shrink-0 text-amber-500 group-hover:scale-110 transition-transform">
+            <i class="ph ph-lightbulb text-base"></i>
+          </span>
+          <span v-show="!isCollapsed" class="ml-2.5 truncate text-left text-amber-900 font-bold">
+            ¿Cómo funciona?
+          </span>
+        </button>
       </div>
 
     </aside>

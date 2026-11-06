@@ -23,6 +23,9 @@ import uvicorn
 
 import config
 import core.database as db
+import core.mailer as mailer
+import io
+import csv
 
 BASE_DIR = Path(__file__).parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -701,6 +704,99 @@ async def api_setup_device_webhook(device_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/devices/{device_id}/test-connection")
+async def api_test_device_connection(device_id: int):
+    """
+    Prueba en 1 clic la comunicación HTTP Digest con el reloj checador ISAPI.
+    Mide latencia y actualiza el estado en vivo.
+    """
+    conn = db.get_conn()
+    clk = conn.execute("SELECT * FROM relojes WHERE id = ?", (device_id,)).fetchone()
+    conn.close()
+    if not clk:
+        raise HTTPException(status_code=404, detail="Reloj no encontrado")
+
+    base_url = f"http://{clk['ip']}:{clk['puerto']}" if clk["puerto"] != 80 else f"http://{clk['ip']}"
+    t_start = datetime.datetime.now()
+    try:
+        resp = await asyncio.to_thread(
+            requests.get,
+            f"{base_url}/ISAPI/System/deviceInfo",
+            auth=HTTPDigestAuth(clk["usuario"], clk["password"]),
+            timeout=3.5
+        )
+        latency_ms = int((datetime.datetime.now() - t_start).total_seconds() * 1000)
+        if resp.status_code == 200:
+            modelo = clk["modelo"]
+            firmware = clk["firmware"]
+            try:
+                root = ET.fromstring(resp.text)
+                ns = {"ns": "http://www.isapi.org/ver20/XMLSchema"}
+                m_node = root.find("ns:model", ns) or root.find("model")
+                if m_node is not None and m_node.text:
+                    modelo = m_node.text
+                f_node = root.find("ns:firmwareVersion", ns) or root.find("firmwareVersion")
+                if f_node is not None and f_node.text:
+                    firmware = f_node.text
+            except Exception:
+                pass
+
+            conn = db.get_conn()
+            conn.execute("UPDATE relojes SET estado = 'ONLINE', modelo = ?, firmware = ? WHERE id = ?",
+                         (modelo, firmware, device_id))
+            conn.commit()
+            conn.close()
+
+            return {
+                "ok": True,
+                "status": "success",
+                "latency_ms": latency_ms,
+                "estado": "ONLINE",
+                "modelo": modelo,
+                "firmware": firmware,
+                "message": f"Conexión exitosa con {modelo} ({latency_ms} ms)"
+            }
+        else:
+            return {
+                "ok": False,
+                "status": "error",
+                "latency_ms": latency_ms,
+                "error": f"El reloj respondió con código HTTP {resp.status_code} (verifique usuario y contraseña)"
+            }
+    except requests.exceptions.Timeout:
+        return {
+            "ok": False,
+            "status": "error",
+            "error": f"Tiempo de espera agotado al conectar con {clk['ip']}:{clk['puerto']} (reloj apagado o fuera de red)"
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "status": "error",
+            "error": f"No se pudo conectar a {clk['ip']}: {str(e)}"
+        }
+
+
+# --- CONFIGURACIÓN Y PREFERENCIAS DEL SISTEMA ---
+
+@app.get("/api/settings")
+async def api_get_settings():
+    """Retorna la configuración del sistema, parámetros anti-rebote y datos de red."""
+    settings = db.get_all_settings()
+    local_ip = detect_local_ip()
+    settings["local_ip"] = local_ip
+    settings["webhook_port"] = 8000
+    settings["webhook_url"] = f"http://{local_ip}:8000/api/v1/webhooks/hikvision"
+    return {"status": "success", "settings": settings}
+
+
+@app.post("/api/settings")
+async def api_update_settings(payload: Dict[str, Any] = Body(...)):
+    """Guarda o actualiza parámetros de configuración (debounce, tolerancia, operador)."""
+    db.update_settings(payload)
+    return {"ok": True, "status": "success", "message": "Configuración guardada exitosamente"}
+
+
 # --- EMPLEADOS Y BIOMETRÍA ---
 
 @app.get("/api/employees")
@@ -909,6 +1005,253 @@ async def api_delete_area(area_id: int):
     conn.commit()
     conn.close()
     return {"ok": True, "status": "success"}
+
+
+# --- CONFIGURACIÓN DE CORREO (SMTP) Y ENVÍO DE REPORTES ---
+
+@app.get("/api/email/config")
+async def api_get_email_config():
+    cfg = db.get_email_config(mask_password=True)
+    return {"status": "success", "config": cfg}
+
+
+@app.post("/api/email/config")
+async def api_update_email_config(payload: Dict[str, Any] = Body(...)):
+    updated = db.update_email_config(payload)
+    return {"status": "success", "config": updated, "message": "Configuración de correo actualizada correctamente."}
+
+
+@app.post("/api/email/test")
+async def api_test_email(payload: Dict[str, Any] = Body(...)):
+    test_to = (payload.get("to_email") or "").strip()
+    if not test_to:
+        cfg = db.get_email_config(mask_password=False)
+        test_to = cfg.get("destinatario_default") or cfg.get("smtp_user")
+    if not test_to or "@" not in test_to:
+        raise HTTPException(status_code=400, detail="Debes indicar un correo destinatario válido para la prueba.")
+
+    cfg_override = None
+    if "smtp_host" in payload and payload.get("smtp_host"):
+        # Permite probar con datos recién tipeados en la interfaz antes de guardar
+        cfg_override = payload
+
+    now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    html_test = f"""
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 540px; margin: 0 auto; padding: 28px; background: #ffffff; border-radius: 16px; border: 1px solid #e4e4e7; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+        <div style="background: #18181b; color: white; padding: 16px 20px; border-radius: 12px; margin-bottom: 20px;">
+            <div style="font-size: 10px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; color: #a1a1aa;">ACCESS BIOMÉTRICO</div>
+            <h2 style="margin: 4px 0 0 0; font-size: 18px; color: #ffffff;">Prueba de Conexión SMTP Exitosa</h2>
+        </div>
+        <p style="color: #3f3f46; font-size: 13px; line-height: 1.5;">Este es un mensaje de verificación generado desde el servidor local de <strong>ACCESS</strong>.</p>
+        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 16px; margin: 16px 0;">
+            <span style="color: #15803d; font-weight: bold; font-size: 13px;">✔ Autenticación y envío correctos</span>
+            <p style="margin: 4px 0 0 0; font-size: 11px; color: #166534;">Tu servidor SMTP está listo para enviar reportes de asistencia automáticamente.</p>
+        </div>
+        <div style="font-size: 11px; color: #71717a; border-top: 1px solid #f4f4f5; padding-top: 12px; margin-top: 16px;">
+            Fecha y hora: <span style="font-family: monospace;">{now_str}</span>
+        </div>
+    </div>
+    """
+
+    res = await asyncio.to_thread(
+        mailer.send_email_message,
+        to_email=test_to,
+        subject="ACCESS — Prueba de Conexión de Correo Exitosa",
+        html_content=html_test,
+        text_content=f"Prueba exitosa de conexión de correo desde ACCESS ({now_str}).",
+        config_override=cfg_override
+    )
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Error al conectar con el servidor SMTP."))
+    return {"status": "success", "message": res.get("message")}
+
+
+@app.get("/api/reports/query")
+async def api_query_report(
+    type: str = "bitacora",
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    employee_id: Optional[str] = None,
+    area: Optional[str] = None,
+    reloj: Optional[str] = None,
+    status: Optional[str] = None
+):
+    dataset = db.get_report_dataset(
+        report_type=type,
+        start_date=start_date,
+        end_date=end_date,
+        employee_id=employee_id,
+        area=area,
+        reloj=reloj,
+        status_filter=status
+    )
+    return {"status": "success", "report": dataset}
+
+
+@app.post("/api/reports/send-email")
+async def api_send_report_email(payload: Dict[str, Any] = Body(...)):
+    to_email = (payload.get("to_email") or "").strip()
+    subject = (payload.get("subject") or "").strip()
+    notes = (payload.get("notes") or "").strip()
+    report_type = payload.get("report_type", "bitacora")
+    start_date = payload.get("start_date")
+    end_date = payload.get("end_date")
+    employee_id = payload.get("employee_id")
+    area = payload.get("area")
+    reloj = payload.get("reloj")
+    status_filter = payload.get("status")
+    attach_csv = payload.get("attach_csv", True)
+
+    cfg = db.get_email_config(mask_password=False)
+    if not to_email:
+        to_email = cfg.get("destinatario_default")
+    if not to_email:
+        raise HTTPException(status_code=400, detail="Por favor indica un correo destinatario.")
+    if not cfg.get("is_configured"):
+        raise HTTPException(status_code=400, detail="El servidor de correo (SMTP) aún no ha sido configurado. Ve a Configuración de Correo para ingresar las credenciales.")
+
+    # Generar dataset dinámico
+    dataset = db.get_report_dataset(
+        report_type=report_type,
+        start_date=start_date,
+        end_date=end_date,
+        employee_id=employee_id,
+        area=area,
+        reloj=reloj,
+        status_filter=status_filter
+    )
+
+    report_title = dataset.get("title", "Reporte de Asistencia ACCESS")
+    if not subject:
+        today_fmt = datetime.date.today().strftime("%d/%m/%Y")
+        subject = f"ACCESS — {report_title} ({today_fmt})"
+
+    # Descripción de filtros aplicados
+    filter_parts = []
+    if start_date and end_date:
+        filter_parts.append(f"Periodo: {start_date} al {end_date}")
+    elif start_date:
+        filter_parts.append(f"Desde: {start_date}")
+    elif end_date:
+        filter_parts.append(f"Hasta: {end_date}")
+    else:
+        filter_parts.append("Periodo: Todos los registros")
+
+    if employee_id and employee_id != "TODOS":
+        filter_parts.append(f"Empleado #{employee_id}")
+    if area and area != "TODAS":
+        filter_parts.append(f"Área: {area}")
+    if reloj and reloj != "TODOS":
+        filter_parts.append(f"Reloj: {reloj}")
+
+    filters_desc = " • ".join(filter_parts)
+
+    # Preparar KPIs
+    summary_data = dataset.get("summary", {})
+    kpis_list = []
+    for k, v in summary_data.items():
+        label_pretty = k.replace("_", " ").title()
+        kpis_list.append({"label": label_pretty, "value": str(v), "hint": ""})
+
+    # Preparar filas tabulares
+    headers = dataset.get("headers", [])
+    raw_data = dataset.get("data", [])
+    table_rows = []
+
+    if report_type == "bitacora":
+        for r in raw_data:
+            table_rows.append([
+                str(r.get("id")),
+                f"#{r.get('codigo_empleado')}",
+                r.get("nombre", ""),
+                r.get("area", ""),
+                r.get("reloj_nombre", ""),
+                r.get("metodo", ""),
+                r.get("fecha_hora_display", ""),
+                '<span style="color: #15803D; font-weight: bold;">Válido</span>' if not r.get("es_rebote") else '<span style="color: #B45309; font-weight: bold;">Rebote</span>'
+            ])
+    elif report_type == "empleados":
+        for r in raw_data:
+            table_rows.append([
+                f"#{r.get('codigo_empleado')}",
+                r.get("nombre", ""),
+                r.get("area_nombre", ""),
+                r.get("turno", ""),
+                f"<b>{r.get('total_validas', 0)}</b>",
+                str(r.get("total_rebotes", 0)),
+                str(r.get("dias_activos", 0)),
+                r.get("primera_checada", ""),
+                r.get("ultima_checada", ""),
+                f'<span style="color: #0369A1; font-weight: bold;">{r.get("estatus", "")}</span>'
+            ])
+    elif report_type == "relojes":
+        for r in raw_data:
+            table_rows.append([
+                r.get("nombre", ""),
+                r.get("ip", ""),
+                r.get("modelo", ""),
+                r.get("ubicacion", ""),
+                str(r.get("total_eventos_periodo", 0)),
+                str(r.get("validas", 0)),
+                str(r.get("rebotes", 0)),
+                str(r.get("usuarios_distintos", 0)),
+                r.get("ultima_actividad", ""),
+                '<span style="color: #15803D; font-weight: bold;">ONLINE</span>' if r.get("estado") == "ONLINE" else '<span style="color: #DC2626; font-weight: bold;">OFFLINE</span>'
+            ])
+    elif report_type == "areas":
+        for r in raw_data:
+            table_rows.append([
+                r.get("codigo", ""),
+                r.get("nombre", ""),
+                r.get("responsable", ""),
+                r.get("turno", ""),
+                r.get("horario", ""),
+                str(r.get("plantilla", 0)),
+                str(r.get("colaboradores_presentes", 0)),
+                f"{r.get('cobertura_pct', 0)}%",
+                f"<b>{r.get('total_validas', 0)}</b>"
+            ])
+
+    html_email = mailer.generate_report_html(
+        report_title=report_title,
+        filters_desc=filters_desc,
+        summary_kpis=kpis_list,
+        headers=headers,
+        rows=table_rows,
+        notes=notes
+    )
+
+    # Generar archivo CSV adjunto opcional
+    attachment_bytes = None
+    attachment_filename = None
+    if attach_csv:
+        csv_buffer = io.StringIO()
+        csv_writer = csv.writer(csv_buffer)
+        csv_writer.writerow(headers)
+        import re
+        clean_tag_re = re.compile(r'<[^>]+>')
+        for row in table_rows:
+            clean_row = [clean_tag_re.sub('', str(cell)) for cell in row]
+            csv_writer.writerow(clean_row)
+
+        attachment_bytes = ("\ufeff" + csv_buffer.getvalue()).encode("utf-8")
+        date_str = datetime.date.today().strftime("%Y%m%d")
+        attachment_filename = f"reporte_{report_type}_{date_str}.csv"
+
+    res = await asyncio.to_thread(
+        mailer.send_email_message,
+        to_email=to_email,
+        subject=subject,
+        html_content=html_email,
+        text_content=f"{report_title}\n{filters_desc}\n\nRevisa el archivo adjunto para ver el reporte.",
+        attachment_filename=attachment_filename,
+        attachment_bytes=attachment_bytes
+    )
+
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Error al enviar el reporte por correo."))
+
+    return {"status": "success", "message": f"Reporte enviado con éxito a {to_email}."}
 
 
 if __name__ == "__main__":
