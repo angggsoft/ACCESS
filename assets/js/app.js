@@ -102,9 +102,9 @@ const App = {
     const branchEmployees = computed(() => employees.value.filter(e => !e.reloj_asignado || e.reloj_asignado === primaryClock.value.nombre));
     const branchDevices = computed(() => devices.value.filter(d => d.id === primaryClock.value.id));
 
-    function showIslandActivity({ title, method = '', badge = '', type = 'checkin' }, ms = 3200) {
+    function showIslandActivity({ title, clock = '', method = '', badge = '', type = 'checkin' }, ms = 4200) {
       if (islandTimer) clearTimeout(islandTimer);
-      islandActivity.value = { id: Date.now(), title, method, badge, type };
+      islandActivity.value = { id: Date.now(), title, clock, method, badge, type };
       islandTimer = setTimeout(() => { islandActivity.value = null; }, ms);
     }
 
@@ -140,6 +140,7 @@ const App = {
             const nm = (newest.nombre || '').trim();
             showIslandActivity({
               title: nm || 'Empleado #' + newest.codigo_empleado,
+              clock: newest.reloj_nombre || primaryClock.value.nombre || 'Cerro Gordo',
               method: newest.metodo || 'BIOMÉTRICO',
               badge: isBounce ? 'REBOTE' : 'VÁLIDO',
               type: isBounce ? 'rebote' : 'checkin'
@@ -342,6 +343,16 @@ const App = {
       handleHashChange();
       window.addEventListener('hashchange', handleHashChange);
       await fetchOverview(false);
+      // Helper para probar animación de checada en consola si se desea
+      window.__quodoTestCheckin = (nombre = 'Angel Flores', clock = 'Cerro Gordo', badge = 'VÁLIDO') => {
+        showIslandActivity({
+          title: nombre,
+          clock: clock,
+          method: 'FACIAL',
+          badge: badge,
+          type: badge === 'REBOTE' ? 'rebote' : 'checkin'
+        });
+      };
       // Poll every 2 seconds so new check-ins appear automatically on screen
       pollTimer = setInterval(() => {
         fetchOverview(true);
@@ -349,6 +360,7 @@ const App = {
     });
 
     onUnmounted(() => {
+      delete window.__quodoTestCheckin;
       window.removeEventListener('hashchange', handleHashChange);
       if (pollTimer) clearInterval(pollTimer);
       if (toastTimer) clearTimeout(toastTimer);

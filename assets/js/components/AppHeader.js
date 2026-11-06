@@ -67,7 +67,7 @@ export default {
       const el = measureRef.value;
       if (!el) return;
       const contentW = Math.ceil(el.getBoundingClientRect().width);
-      pillWidth.value = Math.min(Math.max(contentW + 44, 136), 520);
+      pillWidth.value = Math.min(Math.max(contentW + 48, 140), 640);
     }
 
     function toggleMenu(e) {
@@ -185,6 +185,7 @@ export default {
           <template v-else-if="liveActivity">
             <span class="w-2 h-2 shrink-0"></span>
             <span class="text-xs font-bold tracking-tight">{{ liveActivity.title }}</span>
+            <span v-if="liveActivity.clock" class="text-[10px] mono-code px-2 py-0.5">{{ liveActivity.clock }}</span>
             <span v-if="liveActivity.method" class="text-[10px] mono-code">{{ liveActivity.method }}</span>
             <span v-if="liveActivity.badge" class="text-[9px] mono-code font-bold px-2 py-0.5">{{ liveActivity.badge }}</span>
           </template>
@@ -204,24 +205,35 @@ export default {
               v-if="liveActivity && liveActivity.type === 'sync'"
               key="state-sync"
               class="flex items-center justify-center gap-2.5 px-5 whitespace-nowrap">
-              <span class="w-3.5 h-3.5 rounded-full border-2 border-white/25 border-t-emerald-400 animate-spin shrink-0"></span>
+              <span class="w-3.5 h-3.5 rounded-full border-2 border-white/25 border-t-white animate-spin shrink-0"></span>
               <span class="text-xs font-semibold text-white tracking-tight truncate">{{ liveActivity.title }}</span>
             </div>
 
-            <!-- Estado: EVENTO (Checada recibida en una línea) -->
+            <!-- Estado: EVENTO (Checada con reloj, crecimiento elástico y estado blanco) -->
             <div
               v-else-if="liveActivity"
               :key="'state-evt-' + liveActivity.id"
               class="flex items-center justify-center gap-2.5 px-5 whitespace-nowrap">
+              <!-- Indicador de punto: blanco para válido, ámbar para rebote -->
               <span
                 class="w-2 h-2 rounded-full shrink-0"
-                :class="liveActivity.type === 'rebote' ? 'bg-amber-400' : 'bg-emerald-400'"></span>
-              <span class="text-xs font-bold text-white tracking-tight truncate max-w-[220px]">{{ liveActivity.title }}</span>
-              <span v-if="liveActivity.method" class="text-[10px] mono-code text-charcoal-300 shrink-0">· {{ liveActivity.method }}</span>
+                :class="liveActivity.type === 'rebote' ? 'bg-amber-400' : 'bg-white shadow-[0_0_6px_rgba(255,255,255,0.7)]'"></span>
+              <!-- Nombre de la persona -->
+              <span class="text-xs font-bold text-white tracking-tight truncate max-w-[200px]">{{ liveActivity.title }}</span>
+              <!-- Reloj / terminal checador -->
+              <span
+                v-if="liveActivity.clock"
+                class="text-[10px] mono-code text-white/85 bg-white/10 border border-white/15 px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1">
+                <i class="ph ph-clock text-[11px] text-white/70"></i>
+                <span>{{ liveActivity.clock }}</span>
+              </span>
+              <!-- Método de validación -->
+              <span v-if="liveActivity.method" class="text-[10px] mono-code text-charcoal-400 shrink-0">· {{ liveActivity.method }}</span>
+              <!-- Estado: BLANCO para válido (sin verde), ámbar para rebote -->
               <span
                 v-if="liveActivity.badge"
                 class="text-[9px] mono-code font-bold px-2 py-0.5 rounded-full shrink-0"
-                :class="liveActivity.type === 'rebote' ? 'bg-amber-400/15 text-amber-300' : 'bg-emerald-400/15 text-emerald-300'">
+                :class="liveActivity.type === 'rebote' ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30' : 'bg-white text-charcoal-950'">
                 {{ liveActivity.badge }}
               </span>
             </div>
