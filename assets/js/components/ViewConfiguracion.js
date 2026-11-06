@@ -1,5 +1,5 @@
 // Component: ViewConfiguracion
-// Centro de Configuración Intuitivo para Asistencia, Hardware ISAPI, Servidor y Operador
+// Centro de Configuración Unificado e Intuitivo para Asistencia, Hardware ISAPI, Servidor, Correo y Operador
 
 import { ref, computed, watch, onMounted } from 'vue';
 
@@ -18,7 +18,7 @@ export default {
     const isCalibratingTime = ref(false);
     const isSettingWebhook = ref(false);
 
-    // Formulario de parámetros
+    // Formulario de parámetros de sistema
     const form = ref({
       debounce_seconds: 180,
       tolerancia_minutos: 10,
@@ -32,6 +32,22 @@ export default {
       webhook_port: 8000,
       webhook_url: ''
     });
+
+    // Formulario SMTP para envío de correos
+    const smtpForm = ref({
+      smtp_host: 'smtp.gmail.com',
+      smtp_port: 587,
+      smtp_user: '',
+      smtp_password: '',
+      smtp_security: 'STARTTLS',
+      remitente_nombre: 'ACCESS - Control Biométrico',
+      remitente_email: '',
+      destinatario_default: ''
+    });
+    const isSavingSmtp = ref(false);
+    const isTestingSmtp = ref(false);
+    const smtpFeedback = ref({ type: '', message: '' });
+    const isSmtpConfigured = ref(false);
 
     const activeClock = computed(() => {
       return props.devices[0] || {
@@ -88,6 +104,24 @@ export default {
         }
       } catch (e) {
         console.error('Error cargando configuración:', e);
+      }
+    }
+
+    async function loadEmailConfig() {
+      try {
+        const res = await fetch('/api/email/config');
+        if (!res.ok) return;
+        const json = await res.json();
+        if (json.config) {
+          isSmtpConfigured.value = Boolean(json.config.is_configured);
+          smtpForm.value = {
+            ...smtpForm.value,
+            ...json.config,
+            smtp_password: json.config.has_password ? '••••••••' : ''
+          };
+        }
+      } catch (e) {
+        // silent
       }
     }
 
@@ -202,6 +236,72 @@ export default {
       }
     }
 
+    // Guardar ajustes SMTP
+    async function saveSmtp() {
+      isSavingSmtp.value = true;
+      smtpFeedback.value = { type: '', message: '' };
+      try {
+        const res = await fetch('/api/email/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(smtpForm.value)
+        });
+        const data = await res.json();
+        if (res.ok) {
+          smtpFeedback.value = { type: 'success', message: 'Servidor SMTP guardado correctamente.' };
+          await loadEmailConfig();
+          emit('toast', 'Ajustes de correo guardados');
+        } else {
+          smtpFeedback.value = { type: 'error', message: data.detail || 'Error al guardar SMTP.' };
+          emit('toast', 'Error guardando correo', 'error');
+        }
+      } catch (e) {
+        smtpFeedback.value = { type: 'error', message: 'Error de red.' };
+      } finally {
+        isSavingSmtp.value = false;
+      }
+    }
+
+    // Probar envío de correo SMTP
+    async function testSmtp() {
+      isTestingSmtp.value = true;
+      smtpFeedback.value = { type: '', message: '' };
+      try {
+        const res = await fetch('/api/email/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...smtpForm.value,
+            to_email: smtpForm.value.destinatario_default || smtpForm.value.smtp_user
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          smtpFeedback.value = { type: 'success', message: '¡Correo de prueba enviado con éxito!' };
+          emit('toast', 'Correo de prueba enviado con éxito');
+        } else {
+          smtpFeedback.value = { type: 'error', message: data.detail || 'Fallo en la prueba de correo.' };
+          emit('toast', 'Error en prueba de correo', 'error');
+        }
+      } catch (e) {
+        smtpFeedback.value = { type: 'error', message: 'Error al conectar con el servidor de correo.' };
+      } finally {
+        isTestingSmtp.value = false;
+      }
+    }
+
+    function applySmtpPreset(provider) {
+      if (provider === 'gmail') {
+        smtpForm.value.smtp_host = 'smtp.gmail.com';
+        smtpForm.value.smtp_port = 587;
+        smtpForm.value.smtp_security = 'STARTTLS';
+      } else if (provider === 'outlook') {
+        smtpForm.value.smtp_host = 'smtp.office365.com';
+        smtpForm.value.smtp_port = 587;
+        smtpForm.value.smtp_security = 'STARTTLS';
+      }
+    }
+
     // Acordeón de FAQs
     const openFaq = ref(null);
     function toggleFaq(i) {
@@ -233,11 +333,17 @@ export default {
 
     onMounted(() => {
       loadSettings();
+      loadEmailConfig();
     });
 
     return {
       activeTab,
       form,
+      smtpForm,
+      isSavingSmtp,
+      isTestingSmtp,
+      smtpFeedback,
+      isSmtpConfigured,
       activeClock,
       clockEdit,
       isSaving,
@@ -251,6 +357,9 @@ export default {
       calibrateClockTime,
       setupWebhook,
       copyWebhookUrl,
+      saveSmtp,
+      testSmtp,
+      applySmtpPreset,
       openFaq,
       toggleFaq,
       faqs
@@ -268,7 +377,7 @@ export default {
               Panel de Control
             </span>
           </div>
-          <p class="text-xs text-sky-600 mt-0.5">Parámetros de asistencia, conexión con el checador, red y preferencias del operador</p>
+          <p class="text-xs text-sky-600 mt-0.5">Parámetros de asistencia, conexión con el checador, red, correo y preferencias</p>
         </div>
 
         <!-- BOTÓN DESTACADO DEL TUTORIAL -->
@@ -304,6 +413,15 @@ export default {
 
         <button
           type="button"
+          @click="activeTab = 'correo'"
+          class="px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0"
+          :class="activeTab === 'correo' ? 'bg-[#18181B] text-white shadow-2xs' : 'text-charcoal-600 hover:bg-charcoal-100 hover:text-charcoal-900'">
+          <i class="ph ph-envelope-simple text-base"></i>
+          <span>Correo y Notificaciones (SMTP)</span>
+        </button>
+
+        <button
+          type="button"
           @click="activeTab = 'red'"
           class="px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0"
           :class="activeTab === 'red' ? 'bg-[#18181B] text-white shadow-2xs' : 'text-charcoal-600 hover:bg-charcoal-100 hover:text-charcoal-900'">
@@ -334,7 +452,6 @@ export default {
       <!-- ================= TAB 1: ASISTENCIA Y ANTI-REBOTE ================= -->
       <div v-if="activeTab === 'asistencia'" class="space-y-6">
         
-        <!-- EXPLICACIÓN CLARA DEL FILTRO ANTI-REBOTE -->
         <div class="bg-white rounded-3xl p-6 border border-charcoal-200 shadow-sm space-y-5">
           <div class="flex items-start justify-between gap-4">
             <div>
@@ -494,7 +611,6 @@ export default {
       <!-- ================= TAB 2: TERMINAL CHECADOR (ISAPI) ================= -->
       <div v-if="activeTab === 'reloj'" class="space-y-6">
         
-        <!-- TARJETA DEL RELOJ ACTIVO CON ACCIONES EN 1 CLIC -->
         <div class="bg-white rounded-3xl p-6 border border-charcoal-200 shadow-sm space-y-6">
           <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div class="flex items-center gap-3.5">
@@ -599,7 +715,127 @@ export default {
 
       </div>
 
-      <!-- ================= TAB 3: SERVIDOR LOCAL Y RED ================= -->
+      <!-- ================= TAB 3: CORREO Y NOTIFICACIONES (SMTP) ================= -->
+      <div v-if="activeTab === 'correo'" class="space-y-6">
+        
+        <div class="bg-white rounded-3xl p-6 border border-charcoal-200 shadow-sm space-y-6">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center text-lg">
+                  <i class="ph ph-envelope-simple"></i>
+                </div>
+                <h3 class="text-base font-bold text-charcoal-900">Servidor de Correo para Pre-Nómina y Reportes (SMTP)</h3>
+              </div>
+              <p class="text-xs text-charcoal-500 mt-1">
+                Permite enviar la pre-nómina, bitácoras de incidencias y reportes a RH y gerencia directamente por correo.
+              </p>
+            </div>
+            
+            <span class="px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5"
+              :class="isSmtpConfigured ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'">
+              <span class="w-2 h-2 rounded-full" :class="isSmtpConfigured ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+              {{ isSmtpConfigured ? 'SMTP Conectado' : 'Pendiente' }}
+            </span>
+          </div>
+
+          <!-- PRESETS RÁPIDOS GMAIL Y OUTLOOK -->
+          <div class="p-3.5 rounded-2xl bg-offwhite border border-charcoal-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <span class="text-charcoal-600 font-medium">Plantillas de configuración rápida:</span>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                @click="applySmtpPreset('gmail')"
+                class="px-3 py-1.5 rounded-xl bg-white border border-charcoal-200 hover:bg-charcoal-50 font-bold text-charcoal-800 transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs">
+                <i class="ph ph-google-logo text-red-500"></i>
+                <span>Gmail (smtp.gmail.com)</span>
+              </button>
+              <button
+                type="button"
+                @click="applySmtpPreset('outlook')"
+                class="px-3 py-1.5 rounded-xl bg-white border border-charcoal-200 hover:bg-charcoal-50 font-bold text-charcoal-800 transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs">
+                <i class="ph ph-microsoft-outlook-logo text-sky-600"></i>
+                <span>Outlook / Office 365</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- FORMULARIO SMTP -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+            <div class="sm:col-span-2">
+              <label class="block font-bold text-charcoal-800 mb-1">Servidor SMTP (Host)</label>
+              <input v-model="smtpForm.smtp_host" type="text" placeholder="smtp.gmail.com"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 mono-code focus:outline-none focus:ring-2 focus:ring-charcoal-900">
+            </div>
+
+            <div>
+              <label class="block font-bold text-charcoal-800 mb-1">Puerto</label>
+              <input v-model.number="smtpForm.smtp_port" type="number" placeholder="587"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 mono-code focus:outline-none focus:ring-2 focus:ring-charcoal-900">
+            </div>
+
+            <div>
+              <label class="block font-bold text-charcoal-800 mb-1">Seguridad</label>
+              <select v-model="smtpForm.smtp_security" class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 bg-white focus:outline-none focus:ring-2 focus:ring-charcoal-900">
+                <option value="STARTTLS">STARTTLS (Puerto 587 - Estándar)</option>
+                <option value="SSL/TLS">SSL / TLS (Puerto 465)</option>
+                <option value="NONE">Sin cifrado</option>
+              </select>
+            </div>
+
+            <div class="sm:col-span-2">
+              <label class="block font-bold text-charcoal-800 mb-1">Usuario / Correo Remitente</label>
+              <input v-model="smtpForm.smtp_user" type="email" placeholder="asistencia@empresa.com"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 mono-code focus:outline-none focus:ring-2 focus:ring-charcoal-900">
+            </div>
+
+            <div class="sm:col-span-2">
+              <label class="block font-bold text-charcoal-800 mb-1">Contraseña de Aplicación</label>
+              <input v-model="smtpForm.smtp_password" type="password" placeholder="Clave de 16 caracteres de Google o contraseña SMTP"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 focus:outline-none focus:ring-2 focus:ring-charcoal-900">
+              <p class="text-[10px] text-charcoal-400 mt-1">Para Gmail usa una 'Contraseña de Aplicación' generada en tu cuenta de Google.</p>
+            </div>
+
+            <div>
+              <label class="block font-bold text-charcoal-800 mb-1">Destinatario por Defecto</label>
+              <input v-model="smtpForm.destinatario_default" type="email" placeholder="rh@empresa.com"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 mono-code focus:outline-none focus:ring-2 focus:ring-charcoal-900">
+            </div>
+          </div>
+
+          <!-- MENSAJE DE FEEDBACK -->
+          <div v-if="smtpFeedback.message" class="p-3 rounded-2xl text-xs font-medium flex items-center gap-2"
+            :class="smtpFeedback.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200'">
+            <i :class="['ph', smtpFeedback.type === 'success' ? 'ph-check-circle text-emerald-600' : 'ph-x-circle text-red-600', 'text-base']"></i>
+            <span>{{ smtpFeedback.message }}</span>
+          </div>
+
+          <!-- BOTONERA ACCIÓN -->
+          <div class="pt-4 border-t border-charcoal-100 flex items-center justify-between">
+            <button
+              type="button"
+              :disabled="isTestingSmtp"
+              @click="testSmtp"
+              class="px-4 py-2.5 rounded-2xl bg-offwhite hover:bg-white border border-charcoal-200 text-charcoal-800 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-2xs disabled:opacity-50">
+              <i class="ph ph-paper-plane-tilt text-base" :class="{ 'animate-pulse': isTestingSmtp }"></i>
+              <span>{{ isTestingSmtp ? 'Enviando prueba...' : 'Enviar Correo de Prueba' }}</span>
+            </button>
+
+            <button
+              type="button"
+              :disabled="isSavingSmtp"
+              @click="saveSmtp"
+              class="px-6 py-2.5 rounded-2xl bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50">
+              <i class="ph ph-floppy-disk text-base" :class="{ 'animate-spin': isSavingSmtp }"></i>
+              <span>{{ isSavingSmtp ? 'Guardando...' : 'Guardar Servidor SMTP' }}</span>
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- ================= TAB 4: SERVIDOR LOCAL Y RED ================= -->
       <div v-if="activeTab === 'red'" class="space-y-6">
         
         <div class="bg-white rounded-3xl p-6 border border-charcoal-200 shadow-sm space-y-6">
@@ -675,7 +911,7 @@ export default {
 
       </div>
 
-      <!-- ================= TAB 4: PERFIL DEL OPERADOR ================= -->
+      <!-- ================= TAB 5: PERFIL DEL OPERADOR ================= -->
       <div v-if="activeTab === 'perfil'" class="space-y-6">
         
         <div class="bg-white rounded-3xl p-6 border border-charcoal-200 shadow-sm space-y-5">
@@ -730,7 +966,7 @@ export default {
 
       </div>
 
-      <!-- ================= TAB 5: AYUDA Y PREGUNTAS FRECUENTES ================= -->
+      <!-- ================= TAB 6: AYUDA Y PREGUNTAS FRECUENTES ================= -->
       <div v-if="activeTab === 'ayuda'" class="space-y-6">
         
         <!-- BANNER LANZADOR DEL TUTORIAL -->
