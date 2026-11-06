@@ -183,9 +183,9 @@ export default {
             <span class="text-xs font-semibold tracking-tight">{{ liveActivity.title }}</span>
           </template>
           <template v-else-if="liveActivity">
-            <span class="w-2 h-2 shrink-0"></span>
+            <span v-if="liveActivity.clock" class="text-[10px] mono-code px-2.5 py-0.5">{{ liveActivity.clock }}</span>
+            <span v-else class="w-2 h-2 shrink-0"></span>
             <span class="text-xs font-bold tracking-tight">{{ liveActivity.title }}</span>
-            <span v-if="liveActivity.clock" class="text-[10px] mono-code px-2 py-0.5">{{ liveActivity.clock }}</span>
             <span v-if="liveActivity.method" class="text-[10px] mono-code">{{ liveActivity.method }}</span>
             <span v-if="liveActivity.badge" class="text-[9px] mono-code font-bold px-2 py-0.5">{{ liveActivity.badge }}</span>
           </template>
@@ -209,26 +209,31 @@ export default {
               <span class="text-xs font-semibold text-white tracking-tight truncate">{{ liveActivity.title }}</span>
             </div>
 
-            <!-- Estado: EVENTO (Checada con reloj, crecimiento elástico y estado blanco) -->
+            <!-- Estado: EVENTO (Ubicación a la extrema izquierda, nombre, método y estado blanco) -->
             <div
               v-else-if="liveActivity"
               :key="'state-evt-' + liveActivity.id"
               class="flex items-center justify-center gap-2.5 px-5 whitespace-nowrap">
-              <!-- Indicador de punto: blanco para válido, ámbar para rebote -->
-              <span
-                class="w-2 h-2 rounded-full shrink-0"
-                :class="liveActivity.type === 'rebote' ? 'bg-amber-400' : 'bg-white shadow-[0_0_6px_rgba(255,255,255,0.7)]'"></span>
-              <!-- Nombre de la persona -->
-              <span class="text-xs font-bold text-white tracking-tight truncate max-w-[200px]">{{ liveActivity.title }}</span>
-              <!-- Reloj / terminal checador -->
+              <!-- Reloj / Ubicación hasta la orilla izquierda con punto de estado integrado -->
               <span
                 v-if="liveActivity.clock"
-                class="text-[10px] mono-code text-white/85 bg-white/10 border border-white/15 px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1">
-                <i class="ph ph-clock text-[11px] text-white/70"></i>
+                class="text-[10px] mono-code text-white/90 bg-white/10 border border-white/15 px-2.5 py-0.5 rounded-full shrink-0 flex items-center gap-1.5 shadow-2xs">
+                <span
+                  class="w-1.5 h-1.5 rounded-full shrink-0"
+                  :class="liveActivity.type === 'rebote' ? 'bg-amber-400' : 'bg-white shadow-[0_0_6px_rgba(255,255,255,0.85)]'"></span>
                 <span>{{ liveActivity.clock }}</span>
               </span>
+              <span
+                v-else
+                class="w-2 h-2 rounded-full shrink-0"
+                :class="liveActivity.type === 'rebote' ? 'bg-amber-400' : 'bg-white shadow-[0_0_6px_rgba(255,255,255,0.7)]'"></span>
+
+              <!-- Nombre de la persona -->
+              <span class="text-xs font-bold text-white tracking-tight truncate max-w-[210px]">{{ liveActivity.title }}</span>
+
               <!-- Método de validación -->
-              <span v-if="liveActivity.method" class="text-[10px] mono-code text-charcoal-400 shrink-0">· {{ liveActivity.method }}</span>
+              <span v-if="liveActivity.method" class="text-[10px] mono-code text-white/45 shrink-0">· {{ liveActivity.method }}</span>
+
               <!-- Estado: BLANCO para válido (sin verde), ámbar para rebote -->
               <span
                 v-if="liveActivity.badge"
