@@ -257,66 +257,81 @@ export default {
       <!-- RIGHT: Dynamic Actions Dropdown + User Avatar & Popover -->
       <div class="flex items-center gap-2.5 z-10 relative">
 
-        <!-- DYNAMIC MODULE ACTIONS DROPDOWN (Estilo Claro Inicio) -->
+        <!-- DYNAMIC MODULE ACTIONS DROPDOWN (Estilo KPI: redondez 3xl/2xl, fuentes y jerarquía) -->
         <div v-if="currentModule.actions && currentModule.actions.length" ref="actionsContainerRef" class="relative">
           <button
             type="button"
             @click="toggleActions"
-            class="h-9 px-3.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-2xs"
+            class="h-10 px-4 rounded-2xl border text-xs font-bold flex items-center gap-2.5 transition-all cursor-pointer shadow-xs hover:shadow-sm"
             :class="isActionsOpen 
-              ? 'bg-charcoal-100 border-charcoal-300 text-charcoal-900' 
-              : 'bg-white hover:bg-charcoal-50 text-charcoal-800 border-charcoal-200'">
-            <i class="ph ph-sliders-horizontal text-sm text-charcoal-600"></i>
-            <span>Acciones</span>
-            <i class="ph ph-caret-down text-[10px] text-charcoal-500 transition-transform duration-150" :class="{ 'rotate-180': isActionsOpen }"></i>
+              ? 'bg-charcoal-100 border-charcoal-300 text-charcoal-900 shadow-inner' 
+              : 'bg-white hover:bg-charcoal-50 text-charcoal-900 border-charcoal-200 hover:border-charcoal-300'">
+            <div class="w-5 h-5 rounded-lg bg-charcoal-100 flex items-center justify-center text-charcoal-700">
+              <i class="ph ph-sliders-horizontal text-xs"></i>
+            </div>
+            <span class="tracking-tight">Acciones</span>
+            <i class="ph ph-caret-down text-[10px] text-charcoal-400 transition-transform duration-200" :class="{ 'rotate-180': isActionsOpen }"></i>
           </button>
 
           <div
             v-if="isActionsOpen"
-            class="absolute right-0 top-11 mt-1.5 w-72 bg-white rounded-2xl shadow-xl border border-charcoal-200 py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
+            class="absolute right-0 top-12 mt-2 w-80 bg-white rounded-3xl shadow-xl border border-charcoal-200 p-2 z-50 animate-in fade-in zoom-in-95 duration-150">
             
-            <div class="px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-charcoal-400 border-b border-charcoal-100 flex items-center justify-between">
-              <span>{{ currentModule.shortLabel }} · Acciones</span>
-              <span class="text-[9px] mono-code bg-charcoal-100 text-charcoal-600 px-1.5 py-0.5 rounded font-semibold">Módulo</span>
+            <!-- Encabezado estilo KPI -->
+            <div class="px-3.5 pt-2.5 pb-2 border-b border-charcoal-100 flex items-center justify-between">
+              <div class="min-w-0">
+                <p class="text-xs font-bold text-charcoal-900 tracking-tight">{{ currentModule.shortLabel || currentModule.label }}</p>
+                <p class="text-[11px] text-charcoal-400 font-medium">Acciones del módulo</p>
+              </div>
+              <span class="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border border-charcoal-200 bg-charcoal-50 text-charcoal-600">
+                Módulo
+              </span>
             </div>
 
-            <div class="p-1 space-y-0.5">
+            <!-- Lista de acciones estilo KPI Cards -->
+            <div class="p-1 space-y-1">
               <button
                 v-for="act in currentModule.actions"
                 :key="act.id"
                 type="button"
                 @click="triggerAction(act.type)"
-                class="w-full px-3 py-2 rounded-xl text-left text-charcoal-800 hover:text-charcoal-900 hover:bg-charcoal-50 flex items-center gap-3 transition-colors cursor-pointer group">
-                <div class="w-8 h-8 rounded-lg bg-charcoal-100 group-hover:bg-charcoal-200 text-charcoal-700 flex items-center justify-center shrink-0 transition-colors">
-                  <i :class="['ph', act.icon, 'text-sm']" :class="{ 'animate-spin': isSyncing && act.type === 'sync-clock' }"></i>
+                class="w-full px-3 py-2.5 rounded-2xl text-left hover:bg-charcoal-50 flex items-center gap-3.5 transition-all cursor-pointer group border border-transparent hover:border-charcoal-200/70">
+                <div class="w-10 h-10 rounded-xl bg-charcoal-100 group-hover:bg-[#18181B] group-hover:text-white text-charcoal-800 flex items-center justify-center shrink-0 transition-colors shadow-2xs">
+                  <i :class="['ph', act.icon, 'text-base']" :class="{ 'animate-spin': isSyncing && act.type === 'sync-clock' }"></i>
                 </div>
                 <div class="min-w-0 flex-1">
-                  <p class="text-xs font-bold leading-tight truncate text-charcoal-900">{{ act.label }}</p>
-                  <p v-if="act.subtitle" class="text-[10px] text-charcoal-500 truncate mt-0.5">{{ act.subtitle }}</p>
+                  <p class="text-sm font-bold text-charcoal-900 group-hover:text-black leading-tight truncate tracking-tight">{{ act.label }}</p>
+                  <p v-if="act.subtitle" class="text-[11px] text-charcoal-400 truncate mt-0.5 font-medium">{{ act.subtitle }}</p>
                 </div>
+                <i class="ph ph-arrow-right text-xs text-charcoal-300 group-hover:text-charcoal-900 group-hover:translate-x-0.5 transition-all shrink-0"></i>
               </button>
             </div>
 
-            <!-- Selector rápido de sucursal en Inicio -->
+            <!-- Selector rápido de sucursal en Inicio estilo KPI -->
             <template v-if="activeModule === 'inicio' && branches && branches.length > 0">
-              <div class="px-4 pt-2.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-charcoal-400 border-t border-charcoal-100 flex items-center justify-between">
-                <span>Sucursal activa</span>
-                <span class="text-[9px] mono-code text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded font-semibold border border-emerald-200">Terminal</span>
+              <div class="px-3.5 pt-3 pb-1.5 border-t border-charcoal-100 flex items-center justify-between mt-1">
+                <div class="min-w-0">
+                  <p class="text-xs font-bold text-charcoal-900 tracking-tight">Sucursal activa</p>
+                  <p class="text-[11px] text-charcoal-400 font-medium">Terminal asignada</p>
+                </div>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                  Terminal
+                </span>
               </div>
-              <div class="p-1 space-y-0.5">
+              <div class="p-1 space-y-1">
                 <button
                   v-for="b in branches"
                   :key="b.id"
                   type="button"
                   @click="pickBranch(b)"
-                  class="w-full px-3 py-2 rounded-xl text-left text-charcoal-800 hover:bg-charcoal-50 flex items-center gap-2.5 transition-colors cursor-pointer"
-                  :class="{ 'bg-charcoal-50/80 font-bold': b.id === selectedBranchId }">
+                  class="w-full px-3 py-2 rounded-2xl text-left hover:bg-charcoal-50 flex items-center gap-3 transition-all cursor-pointer border border-transparent hover:border-charcoal-200/70"
+                  :class="{ 'bg-charcoal-100/70 border-charcoal-200 font-bold': b.id === selectedBranchId }">
                   <span class="w-2 h-2 rounded-full shrink-0" :class="b.estado === 'ONLINE' ? 'bg-emerald-500' : 'bg-rose-500'"></span>
                   <div class="min-w-0 flex-1">
-                    <p class="text-xs font-semibold leading-tight truncate text-charcoal-900">{{ b.nombre }}</p>
-                    <p class="text-[10px] mono-code text-charcoal-400 truncate">{{ b.ip }}</p>
+                    <p class="text-xs font-bold leading-tight truncate text-charcoal-900 tracking-tight">{{ b.nombre }}</p>
+                    <p class="text-[11px] mono-code text-charcoal-400 truncate">{{ b.ip }}</p>
                   </div>
-                  <i v-if="b.id === selectedBranchId" class="ph ph-check text-xs text-emerald-600 font-bold"></i>
+                  <i v-if="b.id === selectedBranchId" class="ph ph-check text-xs text-charcoal-900 font-bold"></i>
                 </button>
               </div>
             </template>
@@ -333,18 +348,18 @@ export default {
             <span>{{ user.avatar || 'AF' }}</span>
           </button>
 
-          <!-- Dropdown Popover -->
+          <!-- Dropdown Popover estilo KPI -->
           <div 
             v-if="isMenuOpen"
-            class="absolute right-0 top-12 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-charcoal-200 py-3 z-50 animate-in fade-in zoom-in-95 duration-150">
+            class="absolute right-0 top-12 mt-2 w-72 bg-white rounded-3xl shadow-xl border border-charcoal-200 p-2 z-50 animate-in fade-in zoom-in-95 duration-150">
             
-            <div class="px-4 pb-3 border-b border-charcoal-100 flex items-center gap-3">
-              <div class="w-11 h-11 rounded-full bg-[#18181B] text-white flex items-center justify-center text-sm font-bold shrink-0">
+            <div class="px-3.5 py-3 border-b border-charcoal-100 flex items-center gap-3">
+              <div class="w-11 h-11 rounded-2xl bg-[#18181B] text-white flex items-center justify-center text-sm font-bold shrink-0">
                 {{ user.avatar || 'AF' }}
               </div>
               <div class="overflow-hidden">
-                <p class="text-sm font-bold text-charcoal-900 truncate">{{ user.name }}</p>
-                <p class="text-xs text-charcoal-500 truncate">{{ user.role }}</p>
+                <p class="text-sm font-bold text-charcoal-900 truncate tracking-tight">{{ user.name }}</p>
+                <p class="text-[11px] text-charcoal-400 truncate font-medium">{{ user.role }}</p>
                 <div class="mt-1 flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 w-fit">
                   <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                   <span>{{ branchName }}</span>
@@ -352,8 +367,8 @@ export default {
               </div>
             </div>
 
-            <div class="py-2 text-xs text-charcoal-700">
-              <div class="px-4 py-1 text-[10px] font-bold uppercase tracking-wider text-charcoal-400">
+            <div class="py-1 text-xs text-charcoal-700 space-y-0.5">
+              <div class="px-3.5 pt-2 pb-1 text-[11px] font-bold uppercase tracking-wider text-charcoal-400">
                 Ajustes
               </div>
 
@@ -361,10 +376,12 @@ export default {
               <button 
                 type="button" 
                 @click="isMenuOpen = false; $emit('navigate', 'configuracion')"
-                class="w-full px-4 py-2.5 text-left hover:bg-charcoal-50 flex items-center gap-3 transition-colors cursor-pointer group">
-                <i class="ph ph-gear text-base"></i>
+                class="w-full px-3 py-2 rounded-2xl text-left hover:bg-charcoal-50 flex items-center gap-3 transition-colors cursor-pointer group">
+                <div class="w-8 h-8 rounded-xl bg-charcoal-100 group-hover:bg-[#18181B] group-hover:text-white text-charcoal-700 flex items-center justify-center shrink-0 transition-colors">
+                  <i class="ph ph-gear text-sm"></i>
+                </div>
                 <div>
-                  <p class="font-semibold text-charcoal-900 leading-tight">Configuración del Sistema</p>
+                  <p class="font-bold text-xs text-charcoal-900 leading-tight">Configuración del Sistema</p>
                   <p class="text-[10px] text-charcoal-400">Parámetros anti-rebote, ISAPI y red</p>
                 </div>
               </button>
@@ -372,19 +389,21 @@ export default {
               <button 
                 type="button" 
                 @click="openConfig('perfil')"
-                class="w-full px-4 py-2.5 text-left hover:bg-charcoal-50 flex items-center gap-3 transition-colors cursor-pointer group">
-                <i class="ph ph-user-gear text-base"></i>
+                class="w-full px-3 py-2 rounded-2xl text-left hover:bg-charcoal-50 flex items-center gap-3 transition-colors cursor-pointer group">
+                <div class="w-8 h-8 rounded-xl bg-charcoal-100 group-hover:bg-[#18181B] group-hover:text-white text-charcoal-700 flex items-center justify-center shrink-0 transition-colors">
+                  <i class="ph ph-user-gear text-sm"></i>
+                </div>
                 <div>
-                  <p class="font-semibold text-charcoal-900 leading-tight">Mi Perfil y Permisos</p>
+                  <p class="font-bold text-xs text-charcoal-900 leading-tight">Mi Perfil y Permisos</p>
                   <p class="text-[10px] text-charcoal-400">Datos del operador en sesión</p>
                 </div>
               </button>
             </div>
 
-            <div class="pt-2 border-t border-charcoal-100 px-2">
+            <div class="pt-1.5 border-t border-charcoal-100 px-1">
               <a 
                 href="/login" 
-                class="w-full px-3 py-2 rounded-xl text-left text-red-600 hover:bg-red-50 flex items-center gap-2.5 text-xs font-semibold transition-colors">
+                class="w-full px-3 py-2 rounded-2xl text-left text-red-600 hover:bg-red-50 flex items-center gap-2.5 text-xs font-bold transition-colors">
                 <i class="ph ph-sign-out text-base text-red-600"></i>
                 <span>Cerrar Sesión</span>
               </a>
