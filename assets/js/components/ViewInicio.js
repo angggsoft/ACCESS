@@ -16,7 +16,7 @@ export default {
     isSyncing: { type: Boolean, default: false },
     user: { type: Object, default: () => ({ name: 'Angel Flores' }) }
   },
-  emits: ['navigate', 'sync-clock', 'open-tutorial'],
+  emits: ['navigate', 'sync-clock'],
   setup(props) {
     const firstName = computed(() => (props.user?.name || 'Angel').split(' ')[0]);
     const hoveredIndex = ref(null);
@@ -159,13 +159,6 @@ export default {
           <p class="text-xs text-sky-600 mt-0.5">Panel de asistencia</p>
         </div>
         <div class="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            @click="$emit('open-tutorial')"
-            class="flex items-center gap-1.5 text-xs font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 px-3.5 py-2 rounded-xl border border-amber-200 shadow-2xs transition-all cursor-pointer">
-            <i class="ph ph-lightbulb text-sm text-amber-600"></i>
-            <span>¿Cómo funciona el proceso?</span>
-          </button>
           <button
             type="button"
             @click="$emit('sync-clock')"

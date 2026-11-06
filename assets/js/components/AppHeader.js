@@ -28,7 +28,7 @@ export default {
     branches: { type: Array, default: () => [] },
     selectedBranchId: { type: [Number, String, null], default: null }
   },
-  emits: ['toggle-sidebar', 'open-config', 'navigate', 'select-branch', 'open-tutorial'],
+  emits: ['toggle-sidebar', 'open-config', 'navigate', 'select-branch'],
   setup(props, { emit }) {
     const isMenuOpen = ref(false);
     const menuContainerRef = ref(null);
@@ -267,18 +267,8 @@ export default {
         </div>
       </div>
 
-      <!-- RIGHT: Live Badge + Tutorial Button + User Avatar & Popover -->
+      <!-- RIGHT: Live Badge + User Avatar & Popover -->
       <div ref="menuContainerRef" class="flex items-center gap-3 z-10 relative">
-        <!-- BOTÓN DE INFORMACIÓN / MINITUTORIAL PARA EL USUARIO -->
-        <button
-          type="button"
-          @click="$emit('open-tutorial')"
-          class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-bold transition-all cursor-pointer shadow-2xs group"
-          title="Ver tutorial: Aprende cómo funciona todo el proceso">
-          <i class="ph ph-lightbulb text-sm text-amber-600 group-hover:scale-110 transition-transform"></i>
-          <span class="hidden sm:inline">¿Cómo funciona?</span>
-        </button>
-
         <button
           type="button"
           @click="$emit('navigate', 'monitor')"
@@ -325,22 +315,10 @@ export default {
               type="button" 
               @click="isMenuOpen = false; $emit('navigate', 'configuracion')"
               class="w-full px-4 py-2.5 text-left hover:bg-charcoal-50 flex items-center gap-3 transition-colors cursor-pointer group">
-              <i class="ph ph-gear text-base text-charcoal-400 group-hover:text-charcoal-700"></i>
+              <i class="ph ph-gear text-base"></i>
               <div>
                 <p class="font-semibold text-charcoal-900 leading-tight">Configuración del Sistema</p>
                 <p class="text-[10px] text-charcoal-400">Parámetros anti-rebote, ISAPI y red</p>
-              </div>
-            </button>
-
-            <!-- ENLACE AL MINITUTORIAL -->
-            <button 
-              type="button" 
-              @click="isMenuOpen = false; $emit('open-tutorial')"
-              class="w-full px-4 py-2.5 text-left hover:bg-amber-50/60 flex items-center gap-3 transition-colors cursor-pointer group">
-              <i class="ph ph-lightbulb text-base text-amber-500 group-hover:text-amber-600"></i>
-              <div>
-                <p class="font-semibold text-charcoal-900 leading-tight">¿Cómo funciona todo el proceso?</p>
-                <p class="text-[10px] text-amber-700">Minitutorial paso a paso para el usuario</p>
               </div>
             </button>
 
@@ -348,7 +326,7 @@ export default {
               type="button" 
               @click="openConfig('perfil')"
               class="w-full px-4 py-2.5 text-left hover:bg-charcoal-50 flex items-center gap-3 transition-colors cursor-pointer group">
-              <i class="ph ph-user-gear text-base text-charcoal-400 group-hover:text-charcoal-700"></i>
+              <i class="ph ph-user-gear text-base"></i>
               <div>
                 <p class="font-semibold text-charcoal-900 leading-tight">Mi Perfil y Permisos</p>
                 <p class="text-[10px] text-charcoal-400">Datos del operador en sesión</p>

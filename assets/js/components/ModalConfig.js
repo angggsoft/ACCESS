@@ -21,7 +21,7 @@ export default {
       })
     }
   },
-  emits: ['close', 'logout', 'navigate', 'open-tutorial', 'update-user'],
+  emits: ['close', 'logout', 'navigate', 'update-user'],
   setup(props, { emit }) {
     const currentTab = ref('perfil');
     const debounceVal = ref(180);
@@ -170,11 +170,6 @@ export default {
       }
     }
 
-    function launchTutorial() {
-      emit('close');
-      emit('open-tutorial');
-    }
-
     watch(() => props.isOpen, (open) => {
       if (open) {
         loadQuickSettings();
@@ -193,7 +188,6 @@ export default {
       debounceVal,
       isSaving,
       saveDebounce,
-      launchTutorial,
       emailForm,
       showPassword,
       isSavingEmail,
@@ -228,13 +222,6 @@ export default {
           </button>
         </div>
 
-        <button
-          type="button"
-          @click="launchTutorial"
-          class="text-xs font-semibold text-amber-700 hover:text-amber-800 flex items-center gap-1 cursor-pointer shrink-0 ml-2">
-          <i class="ph ph-lightbulb"></i>
-          <span>Tutorial</span>
-        </button>
       </div>
 
       <!-- Tab 1: Perfil -->

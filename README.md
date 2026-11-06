@@ -25,7 +25,7 @@ graph TD
     subgraph Frontend["Panel de Control Ejecutivo (Vue 3 / Tailwind)"]
         Dashboard["Inicio, KPIs y Gráfica 14 Días"]
         Monitor["Monitor de Checadas en Vivo"]
-        Config["Centro de Configuración y Minitutorial"]
+        Config["Centro de Configuración"]
     end
 
     Terminal -- "1. Push en Tiempo Real (< 1s)" --> PushSrv
@@ -54,7 +54,7 @@ graph TD
 | [`main.py`](file:///c:/Users/TI/Documents/GitHub/ACCESS/main.py) | API REST, receptor de webhooks ISAPI, poller en segundo plano y endpoints. |
 | [`access.db`](file:///c:/Users/TI/Documents/GitHub/ACCESS/access.db) | Base de datos SQLite de producción (checadas, empleados, áreas, relojes y configuración). |
 | [`core/database.py`](file:///c:/Users/TI/Documents/GitHub/ACCESS/core/database.py) | Capa de persistencia, debounce anti-rebote, catálogos y gestión de parámetros. |
-| [`assets/js/`](file:///c:/Users/TI/Documents/GitHub/ACCESS/assets/js/) | Aplicación Vue 3 modular (Inicio, Monitor, Relojes, Empleados, Áreas, Reportes, Configuración, Minitutorial). |
+| [`assets/js/`](file:///c:/Users/TI/Documents/GitHub/ACCESS/assets/js/) | Aplicación Vue 3 modular (Inicio, Monitor, Relojes, Empleados, Áreas, Reportes, Configuración). |
 | [`templates/`](file:///c:/Users/TI/Documents/GitHub/ACCESS/templates/) | Vistas HTML (Login y Dashboard ejecutivo con Dynamic Island). |
 | [`setup_webhook_host.py`](file:///c:/Users/TI/Documents/GitHub/ACCESS/setup_webhook_host.py) | Utilidad para configurar el destinatario HTTP del checador vía ISAPI. |
 | [`sync_clock_time.py`](file:///c:/Users/TI/Documents/GitHub/ACCESS/sync_clock_time.py) | Utilidad CLI para calibrar la hora oficial del hardware. |
@@ -81,7 +81,6 @@ python run.py
 
 ---
 
-## 4. Minitutorial y Centro de Configuración
+## 4. Centro de Configuración
 Dentro del sistema encontrarás:
-- Botón **"¿Cómo funciona?"** en la barra superior y lateral para consultar el minitutorial interactivo del ciclo de checado.
 - Módulo **"Configuración"** en el menú lateral para ajustar tiempos de anti-rebote, calibrar la hora del reloj en 1 clic y verificar el enlace ISAPI.

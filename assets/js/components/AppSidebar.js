@@ -63,7 +63,6 @@ export const MODULES_NAV = [
     shortLabel: 'Configuración', 
     icon: 'ph-gear',
     actions: [
-      { id: 'tutorial_open', label: '¿Cómo funciona? (Tutorial)', icon: 'ph-lightbulb', type: 'open-tutorial' },
       { id: 'test_conn', label: 'Probar Conexión Reloj', icon: 'ph-plugs-connected', type: 'test-clock-conn' }
     ]
   }
@@ -121,7 +120,7 @@ export default {
               {{ m.shortLabel }}
             </span>
             <span v-show="!isCollapsed && m.actions && m.actions.length && activeModule === m.id" class="text-[10px] text-charcoal-400">
-              <i class="ph ph-caret-down text-xs text-charcoal-400"></i>
+              <i class="ph ph-caret-down text-xs"></i>
             </span>
           </button>
 
@@ -143,23 +142,6 @@ export default {
 
         </div>
 
-      </div>
-
-      <!-- BOTÓN RÁPIDO MINITUTORIAL -->
-      <div class="px-2 py-2 border-t border-charcoal-200/80 bg-white shrink-0">
-        <button
-          type="button"
-          @click="$emit('quick-action', 'open-tutorial')"
-          class="w-full h-9 flex items-center px-3 rounded-xl text-xs font-semibold text-charcoal-700 hover:text-charcoal-900 hover:bg-amber-50/80 transition-colors cursor-pointer group border border-transparent hover:border-amber-200"
-          :class="{ 'justify-center': isCollapsed }"
-          title="Ver Guía: ¿Cómo funciona todo el proceso?">
-          <span class="w-5 flex items-center justify-center shrink-0 text-amber-500 group-hover:scale-110 transition-transform">
-            <i class="ph ph-lightbulb text-base"></i>
-          </span>
-          <span v-show="!isCollapsed" class="ml-2.5 truncate text-left text-amber-900 font-bold">
-            ¿Cómo funciona?
-          </span>
-        </button>
       </div>
 
     </aside>

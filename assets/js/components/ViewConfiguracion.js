@@ -9,7 +9,7 @@ export default {
     devices: { type: Array, default: () => [] },
     user: { type: Object, default: () => ({ name: 'Angel Flores', role: 'Ingeniero de Sistemas y Hardware', email: 'angel.flores@quodo.mx' }) }
   },
-  emits: ['toast', 'refresh', 'open-tutorial', 'update-user'],
+  emits: ['toast', 'refresh', 'update-user'],
   setup(props, { emit }) {
     const activeTab = ref('asistencia');
     const isSaving = ref(false);
@@ -380,14 +380,6 @@ export default {
           <p class="text-xs text-sky-600 mt-0.5">Parámetros de asistencia, conexión con el checador, red, correo y preferencias</p>
         </div>
 
-        <!-- BOTÓN DESTACADO DEL TUTORIAL -->
-        <button
-          type="button"
-          @click="$emit('open-tutorial')"
-          class="px-4 py-2.5 rounded-2xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shrink-0">
-          <i class="ph ph-lightbulb text-base text-amber-600"></i>
-          <span>¿Cómo funciona el proceso? (Tutorial)</span>
-        </button>
       </div>
 
       <!-- TABS NAVEGACIÓN -->
@@ -747,14 +739,14 @@ export default {
                 type="button"
                 @click="applySmtpPreset('gmail')"
                 class="px-3 py-1.5 rounded-xl bg-white border border-charcoal-200 hover:bg-charcoal-50 font-bold text-charcoal-800 transition-colors cursor-pointer flex items-center gap-1.5">
-                <i class="ph ph-google-logo text-red-500"></i>
+                <i class="ph ph-google-logo"></i>
                 <span>Gmail (smtp.gmail.com)</span>
               </button>
               <button
                 type="button"
                 @click="applySmtpPreset('outlook')"
                 class="px-3 py-1.5 rounded-xl bg-white border border-charcoal-200 hover:bg-charcoal-50 font-bold text-charcoal-800 transition-colors cursor-pointer flex items-center gap-1.5">
-                <i class="ph ph-microsoft-outlook-logo text-sky-600"></i>
+                <i class="ph ph-microsoft-outlook-logo"></i>
                 <span>Outlook / Office 365</span>
               </button>
             </div>
@@ -969,24 +961,6 @@ export default {
       <!-- ================= TAB 6: AYUDA Y PREGUNTAS FRECUENTES ================= -->
       <div v-if="activeTab === 'ayuda'" class="space-y-6">
         
-        <!-- BANNER LANZADOR DEL TUTORIAL -->
-        <div class="bg-gradient-to-r from-charcoal-900 to-black text-white rounded-3xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div class="space-y-1">
-            <span class="text-[10px] font-bold text-amber-400 uppercase tracking-wider mono-code">GUÍA DEL SISTEMA</span>
-            <h3 class="text-lg font-bold">Minitutorial: ¿Cómo funciona todo el proceso?</h3>
-            <p class="text-xs text-charcoal-300 max-w-xl">
-              Recorrido visual interactivo de 5 pasos que explica desde el checado biométrico hasta el cálculo de la pre-nómina.
-            </p>
-          </div>
-          <button
-            type="button"
-            @click="$emit('open-tutorial')"
-            class="px-5 py-2.5 rounded-2xl bg-white text-charcoal-900 hover:bg-charcoal-100 text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-2">
-            <i class="ph ph-play-circle text-base text-amber-500"></i>
-            <span>Iniciar Minitutorial</span>
-          </button>
-        </div>
-
         <!-- ACORDEÓN PREGUNTAS FRECUENTES -->
         <div class="bg-white rounded-3xl p-6 border border-charcoal-200 shadow-sm space-y-3">
           <h3 class="text-base font-bold text-charcoal-900 mb-2">Preguntas Frecuentes y Buenas Prácticas</h3>

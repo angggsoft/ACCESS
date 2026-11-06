@@ -11,7 +11,6 @@ import ViewAreas from './components/ViewAreas.js';
 import ViewReportes from './components/ViewReportes.js';
 import ViewConfiguracion from './components/ViewConfiguracion.js';
 import ModalConfig from './components/ModalConfig.js';
-import ModalTutorial from './components/ModalTutorial.js';
 
 const App = {
   components: {
@@ -24,14 +23,12 @@ const App = {
     ViewAreas,
     ViewReportes,
     ViewConfiguracion,
-    ModalConfig,
-    ModalTutorial
+    ModalConfig
   },
   setup() {
     const activeModule = ref('inicio');
     const isSidebarCollapsed = ref(false);
     const isSyncing = ref(false);
-    const isTutorialOpen = ref(false);
 
     // System Config Modal
     const isConfigModalOpen = ref(false);
@@ -244,8 +241,6 @@ const App = {
         navigateTo('empleados');
       } else if (actionType === 'modal-area') {
         navigateTo('areas');
-      } else if (actionType === 'open-tutorial') {
-        isTutorialOpen.value = true;
       } else if (actionType === 'test-clock-conn') {
         testPrimaryClock();
       }
@@ -319,7 +314,6 @@ const App = {
       isSyncing,
       isConfigModalOpen,
       configInitialSection,
-      isTutorialOpen,
       summary,
       records,
       devices,
@@ -360,7 +354,6 @@ const App = {
         :live-count="summary.total_checadas || records.length"
         @toggle-sidebar="isSidebarCollapsed = !isSidebarCollapsed"
         @open-config="openConfigModal"
-        @open-tutorial="isTutorialOpen = true"
         @navigate="navigateTo"
       />
 
@@ -443,7 +436,6 @@ const App = {
             :user="currentUser"
             @toast="onToast"
             @refresh="fetchOverview(false)"
-            @open-tutorial="isTutorialOpen = true"
             @update-user="onUpdateUser"
           />
 
@@ -452,28 +444,28 @@ const App = {
         <!-- Floating Real-Time Check-in Notification Toast -->
         <div
           v-if="toast.visible"
-          class="fixed bottom-6 right-6 z-50 max-w-md bg-[#18181B] text-white rounded-2xl p-4 shadow-2xl border border-white/10 flex items-start gap-3.5 modal-card-anim">
+          class="fixed bottom-6 right-6 z-50 max-w-md bg-white text-charcoal-900 rounded-2xl p-4 shadow-xl border border-charcoal-200 flex items-start gap-3.5 modal-card-anim">
           <div
             class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-lg"
-            :class="toast.type === 'rebote' ? 'bg-amber-500/20 text-amber-400' : (toast.type === 'info' ? 'bg-blue-500/20 text-blue-400' : 'bg-emerald-500/20 text-emerald-400')">
+            :class="toast.type === 'rebote' ? 'bg-amber-50 text-amber-600' : (toast.type === 'info' ? 'bg-sky-50 text-sky-600' : 'bg-emerald-50 text-emerald-600')">
             <i :class="['ph', toast.type === 'rebote' ? 'ph-warning-circle' : (toast.type === 'info' ? 'ph-arrows-clockwise' : 'ph-fingerprint')]"></i>
           </div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
               <span
                 class="text-[10px] mono-code font-bold uppercase tracking-wider px-2 py-0.5 rounded-md"
-                :class="toast.type === 'rebote' ? 'bg-amber-500/20 text-amber-300' : (toast.type === 'info' ? 'bg-blue-500/20 text-blue-300' : 'bg-emerald-500/20 text-emerald-300')">
+                :class="toast.type === 'rebote' ? 'bg-amber-50 text-amber-700' : (toast.type === 'info' ? 'bg-sky-50 text-sky-700' : 'bg-emerald-50 text-emerald-700')">
                 {{ toast.badge }}
               </span>
               <span class="text-[10px] text-charcoal-400 mono-code">192.168.11.71</span>
             </div>
-            <p class="text-sm font-bold text-white mt-1 truncate">{{ toast.title }}</p>
-            <p class="text-xs text-charcoal-300 mono-code mt-0.5 leading-relaxed">{{ toast.subtitle }}</p>
+            <p class="text-sm font-bold text-charcoal-900 mt-1 truncate">{{ toast.title }}</p>
+            <p class="text-xs text-charcoal-500 mono-code mt-0.5 leading-relaxed">{{ toast.subtitle }}</p>
           </div>
           <button
             type="button"
             @click="toast.visible = false"
-            class="text-charcoal-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer">
+            class="text-charcoal-400 hover:text-charcoal-900 p-1 rounded-lg transition-colors cursor-pointer">
             <i class="ph ph-x text-sm"></i>
           </button>
         </div>
@@ -487,15 +479,9 @@ const App = {
         :user="currentUser"
         @close="isConfigModalOpen = false"
         @navigate="navigateTo"
-        @open-tutorial="isTutorialOpen = true"
         @update-user="onUpdateUser"
       />
 
-      <!-- Minitutorial Interactivo para el Usuario -->
-      <ModalTutorial
-        :is-open="isTutorialOpen"
-        @close="isTutorialOpen = false"
-      />
 
     </div>
   `

@@ -437,7 +437,7 @@ export default {
             type="button"
             @click="isConfigModalOpen = true"
             class="px-4 py-2.5 rounded-2xl bg-white hover:bg-charcoal-100 text-charcoal-800 border border-charcoal-200 text-xs font-bold flex items-center gap-2 shadow-2xs transition-all cursor-pointer shrink-0">
-            <i class="ph ph-gear text-base text-charcoal-500"></i>
+            <i class="ph ph-gear text-base"></i>
             <span>Configurar Correo (SMTP)</span>
             <span v-if="emailConfig.is_configured" class="w-2 h-2 rounded-full bg-emerald-500" title="SMTP Configurado"></span>
             <span v-else class="w-2 h-2 rounded-full bg-amber-500" title="SMTP Pendiente"></span>
@@ -448,7 +448,7 @@ export default {
             type="button"
             @click="exportCurrentReportCsv"
             class="px-4 py-2.5 rounded-2xl bg-white hover:bg-charcoal-100 text-charcoal-800 border border-charcoal-200 text-xs font-bold flex items-center gap-2 shadow-2xs transition-all cursor-pointer shrink-0">
-            <i class="ph ph-file-csv text-base text-emerald-600"></i>
+            <i class="ph ph-file-csv text-base"></i>
             <span>Descargar CSV</span>
           </button>
 
@@ -457,7 +457,7 @@ export default {
             type="button"
             @click="openSendEmailModal"
             class="px-5 py-2.5 rounded-2xl bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer shrink-0">
-            <i class="ph ph-paper-plane-tilt text-base text-sky-400"></i>
+            <i class="ph ph-paper-plane-tilt text-base"></i>
             <span>Enviar Reporte por Correo</span>
           </button>
         </div>
