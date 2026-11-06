@@ -384,7 +384,7 @@ export default {
         <button
           type="button"
           @click="$emit('open-tutorial')"
-          class="px-4 py-2.5 rounded-2xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-bold flex items-center gap-2 shadow-2xs transition-all cursor-pointer shrink-0">
+          class="px-4 py-2.5 rounded-2xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shrink-0">
           <i class="ph ph-lightbulb text-base text-amber-600"></i>
           <span>¿Cómo funciona el proceso? (Tutorial)</span>
         </button>
@@ -397,7 +397,7 @@ export default {
           type="button"
           @click="activeTab = 'asistencia'"
           class="px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0"
-          :class="activeTab === 'asistencia' ? 'bg-[#18181B] text-white shadow-2xs' : 'text-charcoal-600 hover:bg-charcoal-100 hover:text-charcoal-900'">
+          :class="activeTab === 'asistencia' ? 'bg-[#18181B] text-white' : 'text-charcoal-600 hover:bg-charcoal-100 hover:text-charcoal-900'">
           <i class="ph ph-shield-check text-base"></i>
           <span>Asistencia y Anti-Rebote</span>
         </button>
@@ -406,7 +406,7 @@ export default {
           type="button"
           @click="activeTab = 'reloj'"
           class="px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0"
-          :class="activeTab === 'reloj' ? 'bg-[#18181B] text-white shadow-2xs' : 'text-charcoal-600 hover:bg-charcoal-100 hover:text-charcoal-900'">
+          :class="activeTab === 'reloj' ? 'bg-[#18181B] text-white' : 'text-charcoal-600 hover:bg-charcoal-100 hover:text-charcoal-900'">
           <i class="ph ph-fingerprint text-base"></i>
           <span>Terminal Checador (ISAPI)</span>
         </button>
@@ -415,7 +415,7 @@ export default {
           type="button"
           @click="activeTab = 'correo'"
           class="px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0"
-          :class="activeTab === 'correo' ? 'bg-[#18181B] text-white shadow-2xs' : 'text-charcoal-600 hover:bg-charcoal-100 hover:text-charcoal-900'">
+          :class="activeTab === 'correo' ? 'bg-[#18181B] text-white' : 'text-charcoal-600 hover:bg-charcoal-100 hover:text-charcoal-900'">
           <i class="ph ph-envelope-simple text-base"></i>
           <span>Correo y Notificaciones (SMTP)</span>
         </button>
@@ -424,7 +424,7 @@ export default {
           type="button"
           @click="activeTab = 'red'"
           class="px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0"
-          :class="activeTab === 'red' ? 'bg-[#18181B] text-white shadow-2xs' : 'text-charcoal-600 hover:bg-charcoal-100 hover:text-charcoal-900'">
+          :class="activeTab === 'red' ? 'bg-[#18181B] text-white' : 'text-charcoal-600 hover:bg-charcoal-100 hover:text-charcoal-900'">
           <i class="ph ph-hard-drives text-base"></i>
           <span>Servidor Local y Red</span>
         </button>
@@ -433,7 +433,7 @@ export default {
           type="button"
           @click="activeTab = 'perfil'"
           class="px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0"
-          :class="activeTab === 'perfil' ? 'bg-[#18181B] text-white shadow-2xs' : 'text-charcoal-600 hover:bg-charcoal-100 hover:text-charcoal-900'">
+          :class="activeTab === 'perfil' ? 'bg-[#18181B] text-white' : 'text-charcoal-600 hover:bg-charcoal-100 hover:text-charcoal-900'">
           <i class="ph ph-user-gear text-base"></i>
           <span>Perfil del Operador</span>
         </button>
@@ -442,7 +442,7 @@ export default {
           type="button"
           @click="activeTab = 'ayuda'"
           class="px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0"
-          :class="activeTab === 'ayuda' ? 'bg-[#18181B] text-white shadow-2xs' : 'text-charcoal-600 hover:bg-charcoal-100 hover:text-charcoal-900'">
+          :class="activeTab === 'ayuda' ? 'bg-[#18181B] text-white' : 'text-charcoal-600 hover:bg-charcoal-100 hover:text-charcoal-900'">
           <i class="ph ph-question text-base"></i>
           <span>Ayuda y Guías</span>
         </button>
@@ -482,7 +482,7 @@ export default {
                 type="button"
                 @click="setDebouncePreset(60)"
                 class="p-4 rounded-2xl border text-left transition-all cursor-pointer"
-                :class="form.debounce_seconds === 60 ? 'border-charcoal-900 bg-charcoal-900 text-white shadow-sm' : 'border-charcoal-200 bg-offwhite hover:bg-white text-charcoal-800'">
+                :class="form.debounce_seconds === 60 ? 'border-charcoal-900 bg-charcoal-900 text-white' : 'border-charcoal-200 bg-offwhite hover:bg-white text-charcoal-800'">
                 <div class="text-xs font-bold">1 Minuto</div>
                 <div class="text-[11px] mono-code" :class="form.debounce_seconds === 60 ? 'text-charcoal-300' : 'text-charcoal-500'">60 segundos</div>
                 <span class="text-[10px] mt-2 block" :class="form.debounce_seconds === 60 ? 'text-charcoal-300' : 'text-charcoal-400'">Rápido / Flujo alto</span>
@@ -492,7 +492,7 @@ export default {
                 type="button"
                 @click="setDebouncePreset(120)"
                 class="p-4 rounded-2xl border text-left transition-all cursor-pointer"
-                :class="form.debounce_seconds === 120 ? 'border-charcoal-900 bg-charcoal-900 text-white shadow-sm' : 'border-charcoal-200 bg-offwhite hover:bg-white text-charcoal-800'">
+                :class="form.debounce_seconds === 120 ? 'border-charcoal-900 bg-charcoal-900 text-white' : 'border-charcoal-200 bg-offwhite hover:bg-white text-charcoal-800'">
                 <div class="text-xs font-bold">2 Minutos</div>
                 <div class="text-[11px] mono-code" :class="form.debounce_seconds === 120 ? 'text-charcoal-300' : 'text-charcoal-500'">120 segundos</div>
                 <span class="text-[10px] mt-2 block" :class="form.debounce_seconds === 120 ? 'text-charcoal-300' : 'text-charcoal-400'">Moderado</span>
@@ -502,7 +502,7 @@ export default {
                 type="button"
                 @click="setDebouncePreset(180)"
                 class="p-4 rounded-2xl border text-left transition-all cursor-pointer relative overflow-hidden"
-                :class="form.debounce_seconds === 180 ? 'border-emerald-600 bg-[#18181B] text-white shadow-md ring-2 ring-emerald-500/30' : 'border-emerald-300 bg-emerald-50/40 hover:bg-emerald-50 text-charcoal-800'">
+                :class="form.debounce_seconds === 180 ? 'border-emerald-600 bg-[#18181B] text-white' : 'border-emerald-300 bg-emerald-50/40 hover:bg-emerald-50 text-charcoal-800'">
                 <span class="absolute top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500 text-white">RECOMENDADO</span>
                 <div class="text-xs font-bold">3 Minutos</div>
                 <div class="text-[11px] mono-code" :class="form.debounce_seconds === 180 ? 'text-emerald-400' : 'text-emerald-700'">180 segundos</div>
@@ -513,7 +513,7 @@ export default {
                 type="button"
                 @click="setDebouncePreset(300)"
                 class="p-4 rounded-2xl border text-left transition-all cursor-pointer"
-                :class="form.debounce_seconds === 300 ? 'border-charcoal-900 bg-charcoal-900 text-white shadow-sm' : 'border-charcoal-200 bg-offwhite hover:bg-white text-charcoal-800'">
+                :class="form.debounce_seconds === 300 ? 'border-charcoal-900 bg-charcoal-900 text-white' : 'border-charcoal-200 bg-offwhite hover:bg-white text-charcoal-800'">
                 <div class="text-xs font-bold">5 Minutos</div>
                 <div class="text-[11px] mono-code" :class="form.debounce_seconds === 300 ? 'text-charcoal-300' : 'text-charcoal-500'">300 segundos</div>
                 <span class="text-[10px] mt-2 block" :class="form.debounce_seconds === 300 ? 'text-charcoal-300' : 'text-charcoal-400'">Estricto / Turnos fijos</span>
@@ -599,7 +599,7 @@ export default {
               type="button"
               :disabled="isSaving"
               @click="saveSettings(false)"
-              class="px-6 py-2.5 rounded-2xl bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50">
+              class="px-6 py-2.5 rounded-2xl bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50">
               <i class="ph ph-floppy-disk text-base" :class="{ 'animate-spin': isSaving }"></i>
               <span>{{ isSaving ? 'Guardando...' : 'Guardar Parámetros de Asistencia' }}</span>
             </button>
@@ -645,7 +645,7 @@ export default {
               type="button"
               :disabled="isTestingConn"
               @click="testClockConnection"
-              class="p-4 rounded-2xl bg-offwhite hover:bg-white border border-charcoal-200 shadow-2xs text-left transition-all cursor-pointer group disabled:opacity-50">
+              class="p-4 rounded-2xl bg-offwhite hover:bg-white border border-charcoal-200 text-left transition-all cursor-pointer group disabled:opacity-50">
               <div class="flex items-center justify-between mb-2">
                 <span class="w-8 h-8 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center text-lg">
                   <i class="ph ph-plugs-connected" :class="{ 'animate-pulse': isTestingConn }"></i>
@@ -660,7 +660,7 @@ export default {
               type="button"
               :disabled="isCalibratingTime"
               @click="calibrateClockTime"
-              class="p-4 rounded-2xl bg-offwhite hover:bg-white border border-charcoal-200 shadow-2xs text-left transition-all cursor-pointer group disabled:opacity-50">
+              class="p-4 rounded-2xl bg-offwhite hover:bg-white border border-charcoal-200 text-left transition-all cursor-pointer group disabled:opacity-50">
               <div class="flex items-center justify-between mb-2">
                 <span class="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg">
                   <i class="ph ph-clock-clockwise" :class="{ 'animate-spin': isCalibratingTime }"></i>
@@ -675,7 +675,7 @@ export default {
               type="button"
               :disabled="isSettingWebhook"
               @click="setupWebhook"
-              class="p-4 rounded-2xl bg-offwhite hover:bg-white border border-charcoal-200 shadow-2xs text-left transition-all cursor-pointer group disabled:opacity-50">
+              class="p-4 rounded-2xl bg-offwhite hover:bg-white border border-charcoal-200 text-left transition-all cursor-pointer group disabled:opacity-50">
               <div class="flex items-center justify-between mb-2">
                 <span class="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg">
                   <i class="ph ph-broadcast" :class="{ 'animate-spin': isSettingWebhook }"></i>
@@ -746,14 +746,14 @@ export default {
               <button
                 type="button"
                 @click="applySmtpPreset('gmail')"
-                class="px-3 py-1.5 rounded-xl bg-white border border-charcoal-200 hover:bg-charcoal-50 font-bold text-charcoal-800 transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs">
+                class="px-3 py-1.5 rounded-xl bg-white border border-charcoal-200 hover:bg-charcoal-50 font-bold text-charcoal-800 transition-colors cursor-pointer flex items-center gap-1.5">
                 <i class="ph ph-google-logo text-red-500"></i>
                 <span>Gmail (smtp.gmail.com)</span>
               </button>
               <button
                 type="button"
                 @click="applySmtpPreset('outlook')"
-                class="px-3 py-1.5 rounded-xl bg-white border border-charcoal-200 hover:bg-charcoal-50 font-bold text-charcoal-800 transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs">
+                class="px-3 py-1.5 rounded-xl bg-white border border-charcoal-200 hover:bg-charcoal-50 font-bold text-charcoal-800 transition-colors cursor-pointer flex items-center gap-1.5">
                 <i class="ph ph-microsoft-outlook-logo text-sky-600"></i>
                 <span>Outlook / Office 365</span>
               </button>
@@ -816,7 +816,7 @@ export default {
               type="button"
               :disabled="isTestingSmtp"
               @click="testSmtp"
-              class="px-4 py-2.5 rounded-2xl bg-offwhite hover:bg-white border border-charcoal-200 text-charcoal-800 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-2xs disabled:opacity-50">
+              class="px-4 py-2.5 rounded-2xl bg-offwhite hover:bg-white border border-charcoal-200 text-charcoal-800 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50">
               <i class="ph ph-paper-plane-tilt text-base" :class="{ 'animate-pulse': isTestingSmtp }"></i>
               <span>{{ isTestingSmtp ? 'Enviando prueba...' : 'Enviar Correo de Prueba' }}</span>
             </button>
@@ -825,7 +825,7 @@ export default {
               type="button"
               :disabled="isSavingSmtp"
               @click="saveSmtp"
-              class="px-6 py-2.5 rounded-2xl bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50">
+              class="px-6 py-2.5 rounded-2xl bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50">
               <i class="ph ph-floppy-disk text-base" :class="{ 'animate-spin': isSavingSmtp }"></i>
               <span>{{ isSavingSmtp ? 'Guardando...' : 'Guardar Servidor SMTP' }}</span>
             </button>
@@ -916,7 +916,7 @@ export default {
         
         <div class="bg-white rounded-3xl p-6 border border-charcoal-200 shadow-sm space-y-5">
           <div class="flex items-center gap-4">
-            <div class="w-16 h-16 rounded-3xl bg-[#18181B] text-white flex items-center justify-center text-xl font-bold shrink-0 shadow-sm">
+            <div class="w-16 h-16 rounded-3xl bg-[#18181B] text-white flex items-center justify-center text-xl font-bold shrink-0">
               {{ (form.operator_name || 'AF').slice(0, 2).toUpperCase() }}
             </div>
             <div>
@@ -957,7 +957,7 @@ export default {
               type="button"
               :disabled="isSaving"
               @click="saveSettings(false)"
-              class="px-6 py-2.5 rounded-2xl bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50">
+              class="px-6 py-2.5 rounded-2xl bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50">
               <i class="ph ph-floppy-disk text-base"></i>
               <span>Guardar Perfil de Administrador</span>
             </button>
@@ -970,7 +970,7 @@ export default {
       <div v-if="activeTab === 'ayuda'" class="space-y-6">
         
         <!-- BANNER LANZADOR DEL TUTORIAL -->
-        <div class="bg-gradient-to-r from-charcoal-900 to-black text-white rounded-3xl p-6 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div class="bg-gradient-to-r from-charcoal-900 to-black text-white rounded-3xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div class="space-y-1">
             <span class="text-[10px] font-bold text-amber-400 uppercase tracking-wider mono-code">GUÍA DEL SISTEMA</span>
             <h3 class="text-lg font-bold">Minitutorial: ¿Cómo funciona todo el proceso?</h3>
@@ -981,7 +981,7 @@ export default {
           <button
             type="button"
             @click="$emit('open-tutorial')"
-            class="px-5 py-2.5 rounded-2xl bg-white text-charcoal-900 hover:bg-charcoal-100 text-xs font-bold transition-all cursor-pointer shrink-0 shadow-xs flex items-center gap-2">
+            class="px-5 py-2.5 rounded-2xl bg-white text-charcoal-900 hover:bg-charcoal-100 text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-2">
             <i class="ph ph-play-circle text-base text-amber-500"></i>
             <span>Iniciar Minitutorial</span>
           </button>

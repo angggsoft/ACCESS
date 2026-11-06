@@ -79,7 +79,7 @@ export default {
         tags: ['Departamentos', 'Horarios', 'Tolerancia']
       },
       'reportes': {
-        title: 'Pre-Nómina y Reportes',
+        title: 'Reportes',
         badge: 'Cálculo y Exportación',
         desc: 'Consolidado de asistencia para pre-nómina, depuración automática de rebotes, conteo de incidencias y exportación directa a Excel / CSV.',
         tags: ['100% Conciliado', 'Exportar CSV', 'Auditoría']
@@ -205,17 +205,12 @@ export default {
         <span ref="titleMeasureRef" aria-hidden="true" class="absolute invisible pointer-events-none whitespace-nowrap text-sm font-bold tracking-tight" style="left:-9999px; top:0;">{{ title }}</span>
 
         <div class="island-row h-10 grid items-center px-3" style="grid-template-columns: 28px 1fr 28px; column-gap: 10px;">
-          <div class="w-7 h-7 rounded-full bg-white/10 text-emerald-400 flex items-center justify-center text-xs relative">
-            <i :class="['ph', moduleIcon || 'ph-fingerprint']"></i>
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 absolute -top-0.5 -right-0.5 animate-pulse"></span>
-          </div>
+          <div class="w-7 h-7"></div>
 
           <h1 class="text-sm font-bold text-white tracking-tight whitespace-nowrap text-center truncate">{{ title }}</h1>
 
           <div class="relative w-7 h-7">
-            <i 
-              class="ph ph-info absolute inset-0 flex items-center justify-center text-sm text-charcoal-400 transition-opacity duration-200"
-              :class="isIslandExpanded ? 'opacity-0' : 'opacity-100'"></i>
+            
             <button 
               type="button"
               @click.stop="closeIsland"

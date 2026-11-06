@@ -50,11 +50,11 @@ export const MODULES_NAV = [
   },
   { 
     id: 'reportes', 
-    title: 'Pre-Nómina y Reportes', 
-    shortLabel: 'Pre-Nómina', 
+    title: 'Reportes', 
+    shortLabel: 'Reportes', 
     icon: 'ph-chart-bar',
     actions: [
-      { id: 'export_payroll', label: 'Descargar Pre-Nómina CSV', icon: 'ph-file-csv', type: 'export-csv' }
+      { id: 'export_payroll', label: 'Descargar Reportes CSV', icon: 'ph-file-csv', type: 'export-csv' }
     ]
   },
   { 

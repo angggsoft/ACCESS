@@ -425,7 +425,7 @@ export default {
       <!-- HEADER PRINCIPAL -->
       <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
         <div>
-          <h2 class="text-3xl font-bold text-charcoal-900 tracking-tight">Centro de Reportes y Pre-Nómina</h2>
+          <h2 class="text-3xl font-bold text-charcoal-900 tracking-tight">Reportes</h2>
           <p class="text-xs text-charcoal-500 mt-1">
             Auditoría de asistencia por colaborador, reloj checador, departamentos y envío automatizado por correo
           </p>
@@ -604,23 +604,6 @@ export default {
             </select>
           </div>
 
-        </div>
-
-      </div>
-
-      <!-- CARDS DE RESUMEN EJECUTIVO (KPIS DINÁMICOS) -->
-      <div v-if="reportData.summary && Object.keys(reportData.summary).length" class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        
-        <div 
-          v-for="(val, key) in reportData.summary" 
-          :key="key" 
-          class="bg-white rounded-3xl border border-charcoal-200 p-5 shadow-2xs">
-          <div class="text-[11px] font-bold text-charcoal-400 uppercase tracking-wider">
-            {{ String(key).replace(/_/g, ' ') }}
-          </div>
-          <div class="text-2xl font-black text-charcoal-900 mt-1.5 mono-code">
-            {{ val }}
-          </div>
         </div>
 
       </div>
