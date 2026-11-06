@@ -45,20 +45,6 @@ export default {
   template: `
     <div class="w-full space-y-5 animate-in fade-in duration-150">
 
-      <!-- ACCIONES -->
-      <div class="flex items-center justify-end gap-2.5">
-        <button type="button" :disabled="isSyncing" @click="$emit('sync-clock')"
-          class="px-4 py-2 rounded-xl bg-white border border-charcoal-200 hover:bg-charcoal-50 text-charcoal-900 text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-50">
-          <i class="ph ph-arrows-clockwise text-sm" :class="{ 'animate-spin': isSyncing }"></i>
-          <span>{{ isSyncing ? 'Sincronizando…' : 'Sincronizar' }}</span>
-        </button>
-        <button type="button" @click="$emit('export-csv')"
-          class="px-4 py-2 rounded-xl bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-2 cursor-pointer">
-          <i class="ph ph-download-simple text-sm"></i>
-          <span>Exportar CSV</span>
-        </button>
-      </div>
-
       <!-- 3 KPIs -->
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div class="bg-white rounded-3xl px-6 py-5 border border-charcoal-200 shadow-sm flex items-center gap-4">

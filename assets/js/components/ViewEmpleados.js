@@ -169,25 +169,6 @@ export default {
   template: `
     <div class="w-full space-y-5 animate-in fade-in duration-150">
 
-      <!-- ACCIONES -->
-      <div class="flex flex-wrap items-center justify-end gap-2.5">
-        <button
-          type="button"
-          @click="$emit('sync-clock')"
-          class="px-4 py-2.5 rounded-full bg-charcoal-100 hover:bg-charcoal-200 text-charcoal-900 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer">
-          <i class="ph ph-arrows-clockwise text-sm"></i>
-          <span>Importar Usuarios del Reloj</span>
-        </button>
-
-        <button
-          type="button"
-          @click="openNewEmployee"
-          class="px-5 py-2.5 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer">
-          <i class="ph ph-user-plus text-sm"></i>
-          <span>Nuevo Empleado (Alta ISAPI)</span>
-        </button>
-      </div>
-
       <!-- FILTERS -->
       <div class="bg-white rounded-3xl p-4 border border-charcoal-200 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div class="relative flex-1 max-w-md">

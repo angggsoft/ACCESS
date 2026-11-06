@@ -1,7 +1,8 @@
 // Component: AppHeader
-// Desktop top bar with sidebar toggle, single-line Dynamic Island status pill, live webhook indicator, and user profile popover
+// Desktop top bar with sidebar toggle, single-line Dynamic Island status pill, dynamic module Actions dropdown, live webhook indicator, and user profile popover
 
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
+import { MODULES_NAV } from './AppSidebar.js';
 
 export default {
   name: 'AppHeader',
@@ -31,14 +32,21 @@ export default {
     isSyncing: { type: Boolean, default: false },
     branchIp: { type: String, default: '' }
   },
-  emits: ['toggle-sidebar', 'open-config', 'navigate', 'select-branch'],
+  emits: ['toggle-sidebar', 'open-config', 'navigate', 'select-branch', 'quick-action'],
   setup(props, { emit }) {
     const isMenuOpen = ref(false);
     const menuContainerRef = ref(null);
 
+    const isActionsOpen = ref(false);
+    const actionsContainerRef = ref(null);
+
     const measureRef = ref(null);
     const pillWidth = ref(180);
     let resizeObserver = null;
+
+    const currentModule = computed(() => {
+      return MODULES_NAV.find(m => m.id === props.activeModule) || MODULES_NAV[0];
+    });
 
     // Actividad o proceso activo en la isla (sin estado expandido)
     const liveActivity = computed(() => {
@@ -64,7 +72,24 @@ export default {
 
     function toggleMenu(e) {
       if (e) e.stopPropagation();
+      isActionsOpen.value = false;
       isMenuOpen.value = !isMenuOpen.value;
+    }
+
+    function toggleActions(e) {
+      if (e) e.stopPropagation();
+      isMenuOpen.value = false;
+      isActionsOpen.value = !isActionsOpen.value;
+    }
+
+    function triggerAction(actionType) {
+      isActionsOpen.value = false;
+      emit('quick-action', actionType);
+    }
+
+    function pickBranch(b) {
+      isActionsOpen.value = false;
+      emit('select-branch', b.id);
     }
 
     function openConfig(section) {
@@ -76,11 +101,15 @@ export default {
       if (menuContainerRef.value && !menuContainerRef.value.contains(e.target)) {
         isMenuOpen.value = false;
       }
+      if (actionsContainerRef.value && !actionsContainerRef.value.contains(e.target)) {
+        isActionsOpen.value = false;
+      }
     }
 
     function handleKeydown(e) {
       if (e.key === 'Escape') {
         isMenuOpen.value = false;
+        isActionsOpen.value = false;
       }
     }
 
@@ -109,6 +138,12 @@ export default {
       isMenuOpen,
       menuContainerRef,
       toggleMenu,
+      isActionsOpen,
+      actionsContainerRef,
+      toggleActions,
+      triggerAction,
+      pickBranch,
+      currentModule,
       measureRef,
       pillWidth,
       liveActivity,
@@ -202,8 +237,68 @@ export default {
         </div>
       </div>
 
-      <!-- RIGHT: Live Badge + User Avatar & Popover -->
-      <div ref="menuContainerRef" class="flex items-center gap-3 z-10 relative">
+      <!-- RIGHT: Dynamic Actions Dropdown + Live Badge + User Avatar & Popover -->
+      <div class="flex items-center gap-2.5 z-10 relative">
+
+        <!-- DYNAMIC MODULE ACTIONS DROPDOWN -->
+        <div v-if="currentModule.actions && currentModule.actions.length" ref="actionsContainerRef" class="relative">
+          <button
+            type="button"
+            @click="toggleActions"
+            class="h-9 px-3.5 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer">
+            <i class="ph ph-sliders-horizontal text-sm"></i>
+            <span>Acciones</span>
+            <i class="ph ph-caret-down text-[10px] transition-transform duration-150" :class="{ 'rotate-180': isActionsOpen }"></i>
+          </button>
+
+          <div
+            v-if="isActionsOpen"
+            class="absolute right-0 top-11 mt-1.5 w-72 bg-white rounded-2xl shadow-xl border border-charcoal-200 py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
+            
+            <div class="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-charcoal-400 border-b border-charcoal-100">
+              {{ currentModule.shortLabel }} · Acciones
+            </div>
+
+            <div class="py-1">
+              <button
+                v-for="act in currentModule.actions"
+                :key="act.id"
+                type="button"
+                @click="triggerAction(act.type)"
+                class="w-full px-4 py-2.5 text-left text-charcoal-800 hover:text-charcoal-900 hover:bg-charcoal-50 flex items-center gap-3 transition-colors cursor-pointer">
+                <i :class="['ph', act.icon, 'text-base shrink-0']" :class="{ 'animate-spin': isSyncing && act.type === 'sync-clock' }"></i>
+                <div class="min-w-0 flex-1">
+                  <p class="text-xs font-bold leading-tight truncate">{{ act.label }}</p>
+                  <p v-if="act.subtitle" class="text-[10px] text-charcoal-400 truncate mt-0.5">{{ act.subtitle }}</p>
+                </div>
+              </button>
+            </div>
+
+            <!-- Selector rápido de sucursal en Inicio -->
+            <template v-if="activeModule === 'inicio' && branches && branches.length > 0">
+              <div class="px-4 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-charcoal-400 border-t border-charcoal-100">
+                Sucursal activa
+              </div>
+              <div class="py-1">
+                <button
+                  v-for="b in branches"
+                  :key="b.id"
+                  type="button"
+                  @click="pickBranch(b)"
+                  class="w-full px-4 py-2 text-left text-charcoal-800 hover:bg-charcoal-50 flex items-center gap-2.5 transition-colors cursor-pointer">
+                  <span class="w-2 h-2 rounded-full shrink-0" :class="b.estado === 'ONLINE' ? 'bg-emerald-500' : 'bg-rose-500'"></span>
+                  <div class="min-w-0 flex-1">
+                    <p class="text-xs font-semibold leading-tight truncate">{{ b.nombre }}</p>
+                    <p class="text-[10px] mono-code text-charcoal-400 truncate">{{ b.ip }}</p>
+                  </div>
+                  <i v-if="b.id === selectedBranchId" class="ph ph-check text-xs"></i>
+                </button>
+              </div>
+            </template>
+
+          </div>
+        </div>
+
         <button
           type="button"
           @click="$emit('navigate', 'monitor')"
@@ -213,69 +308,71 @@ export default {
           <span>En Vivo: <b class="mono-code">{{ liveCount }}</b> checadas</span>
         </button>
 
-        <button 
-          type="button" 
-          @click="toggleMenu"
-          title="Perfil y configuración de usuario"
-          class="w-10 h-10 rounded-full bg-[#18181B] hover:bg-black text-white flex items-center justify-center font-bold text-xs shadow-xs hover:shadow-md transition-all cursor-pointer border border-charcoal-300 ring-2 ring-transparent hover:ring-charcoal-300">
-          <span>{{ user.avatar || 'AF' }}</span>
-        </button>
+        <div ref="menuContainerRef" class="relative">
+          <button 
+            type="button" 
+            @click="toggleMenu"
+            title="Perfil y configuración de usuario"
+            class="w-10 h-10 rounded-full bg-[#18181B] hover:bg-black text-white flex items-center justify-center font-bold text-xs shadow-xs hover:shadow-md transition-all cursor-pointer border border-charcoal-300 ring-2 ring-transparent hover:ring-charcoal-300">
+            <span>{{ user.avatar || 'AF' }}</span>
+          </button>
 
-        <!-- Dropdown Popover -->
-        <div 
-          v-if="isMenuOpen"
-          class="absolute right-0 top-12 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-charcoal-200 py-3 z-50 animate-in fade-in zoom-in-95 duration-150">
-          
-          <div class="px-4 pb-3 border-b border-charcoal-100 flex items-center gap-3">
-            <div class="w-11 h-11 rounded-full bg-[#18181B] text-white flex items-center justify-center text-sm font-bold shrink-0">
-              {{ user.avatar || 'AF' }}
-            </div>
-            <div class="overflow-hidden">
-              <p class="text-sm font-bold text-charcoal-900 truncate">{{ user.name }}</p>
-              <p class="text-xs text-charcoal-500 truncate">{{ user.role }}</p>
-              <div class="mt-1 flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 w-fit">
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>{{ branchName }}</span>
+          <!-- Dropdown Popover -->
+          <div 
+            v-if="isMenuOpen"
+            class="absolute right-0 top-12 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-charcoal-200 py-3 z-50 animate-in fade-in zoom-in-95 duration-150">
+            
+            <div class="px-4 pb-3 border-b border-charcoal-100 flex items-center gap-3">
+              <div class="w-11 h-11 rounded-full bg-[#18181B] text-white flex items-center justify-center text-sm font-bold shrink-0">
+                {{ user.avatar || 'AF' }}
+              </div>
+              <div class="overflow-hidden">
+                <p class="text-sm font-bold text-charcoal-900 truncate">{{ user.name }}</p>
+                <p class="text-xs text-charcoal-500 truncate">{{ user.role }}</p>
+                <div class="mt-1 flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 w-fit">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span>{{ branchName }}</span>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div class="py-2 text-xs text-charcoal-700">
-            <div class="px-4 py-1 text-[10px] font-bold uppercase tracking-wider text-charcoal-400">
-              Ajustes
+            <div class="py-2 text-xs text-charcoal-700">
+              <div class="px-4 py-1 text-[10px] font-bold uppercase tracking-wider text-charcoal-400">
+                Ajustes
+              </div>
+
+              <!-- ENLACE AL CENTRO DE CONFIGURACIÓN -->
+              <button 
+                type="button" 
+                @click="isMenuOpen = false; $emit('navigate', 'configuracion')"
+                class="w-full px-4 py-2.5 text-left hover:bg-charcoal-50 flex items-center gap-3 transition-colors cursor-pointer group">
+                <i class="ph ph-gear text-base"></i>
+                <div>
+                  <p class="font-semibold text-charcoal-900 leading-tight">Configuración del Sistema</p>
+                  <p class="text-[10px] text-charcoal-400">Parámetros anti-rebote, ISAPI y red</p>
+                </div>
+              </button>
+
+              <button 
+                type="button" 
+                @click="openConfig('perfil')"
+                class="w-full px-4 py-2.5 text-left hover:bg-charcoal-50 flex items-center gap-3 transition-colors cursor-pointer group">
+                <i class="ph ph-user-gear text-base"></i>
+                <div>
+                  <p class="font-semibold text-charcoal-900 leading-tight">Mi Perfil y Permisos</p>
+                  <p class="text-[10px] text-charcoal-400">Datos del operador en sesión</p>
+                </div>
+              </button>
             </div>
 
-            <!-- ENLACE AL CENTRO DE CONFIGURACIÓN -->
-            <button 
-              type="button" 
-              @click="isMenuOpen = false; $emit('navigate', 'configuracion')"
-              class="w-full px-4 py-2.5 text-left hover:bg-charcoal-50 flex items-center gap-3 transition-colors cursor-pointer group">
-              <i class="ph ph-gear text-base"></i>
-              <div>
-                <p class="font-semibold text-charcoal-900 leading-tight">Configuración del Sistema</p>
-                <p class="text-[10px] text-charcoal-400">Parámetros anti-rebote, ISAPI y red</p>
-              </div>
-            </button>
-
-            <button 
-              type="button" 
-              @click="openConfig('perfil')"
-              class="w-full px-4 py-2.5 text-left hover:bg-charcoal-50 flex items-center gap-3 transition-colors cursor-pointer group">
-              <i class="ph ph-user-gear text-base"></i>
-              <div>
-                <p class="font-semibold text-charcoal-900 leading-tight">Mi Perfil y Permisos</p>
-                <p class="text-[10px] text-charcoal-400">Datos del operador en sesión</p>
-              </div>
-            </button>
-          </div>
-
-          <div class="pt-2 border-t border-charcoal-100 px-2">
-            <a 
-              href="/login" 
-              class="w-full px-3 py-2 rounded-xl text-left text-red-600 hover:bg-red-50 flex items-center gap-2.5 text-xs font-semibold transition-colors">
-              <i class="ph ph-sign-out text-base text-red-600"></i>
-              <span>Cerrar Sesión</span>
-            </a>
+            <div class="pt-2 border-t border-charcoal-100 px-2">
+              <a 
+                href="/login" 
+                class="w-full px-3 py-2 rounded-xl text-left text-red-600 hover:bg-red-50 flex items-center gap-2.5 text-xs font-semibold transition-colors">
+                <i class="ph ph-sign-out text-base text-red-600"></i>
+                <span>Cerrar Sesión</span>
+              </a>
+            </div>
           </div>
         </div>
       </div>

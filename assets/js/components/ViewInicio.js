@@ -152,17 +152,6 @@ export default {
   template: `
     <div class="w-full flex-1 min-h-0 flex flex-col space-y-4 animate-in fade-in duration-150">
 
-      <!-- Acciones de hardware -->
-      <div class="flex items-center justify-end gap-2 shrink-0">
-        <button
-          type="button"
-          @click="$emit('sync-clock')"
-          class="flex items-center gap-2 text-xs font-semibold text-charcoal-700 bg-white hover:bg-charcoal-50 px-4 py-2 rounded-xl border border-charcoal-200 shadow-2xs transition-all cursor-pointer">
-          <i class="ph ph-arrows-clockwise text-sm" :class="{ 'animate-spin': isSyncing }"></i>
-          <span>{{ isSyncing ? 'Sincronizando…' : 'Sincronizar reloj' }}</span>
-        </button>
-      </div>
-
       <!-- 4 KPIs principales -->
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
         <button type="button" @click="$emit('navigate','monitor')" class="text-left bg-white rounded-3xl px-6 py-4 border border-charcoal-200 shadow-sm hover:shadow-md transition-shadow flex items-center gap-4 cursor-pointer">

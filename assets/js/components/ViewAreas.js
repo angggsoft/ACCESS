@@ -84,17 +84,6 @@ export default {
   template: `
     <div class="w-full space-y-6 animate-in fade-in duration-150">
 
-      <!-- ACCIONES -->
-      <div class="flex items-center justify-end">
-        <button
-          type="button"
-          @click="openNewArea"
-          class="px-5 py-2.5 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer shrink-0">
-          <i class="ph ph-plus-circle text-base"></i>
-          <span>Nueva Área / Turno</span>
-        </button>
-      </div>
-
       <!-- AREAS CARDS GRID -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div

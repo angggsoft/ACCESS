@@ -1,6 +1,6 @@
 // Main Vue 3 Root Application — ACCESS (Sistema de Asistencia Biométrica y Pre-Nómina)
 
-import { createApp, ref, computed, onMounted, onUnmounted } from 'vue';
+import { createApp, ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
 import AppHeader from './components/AppHeader.js';
 import AppSidebar, { MODULES_NAV } from './components/AppSidebar.js';
 import ViewInicio from './components/ViewInicio.js';
@@ -33,6 +33,12 @@ const App = {
     // System Config Modal
     const isConfigModalOpen = ref(false);
     const configInitialSection = ref('perfil');
+
+    // Referencias a vistas activas para disparar acciones desde el Header
+    const relojesRef = ref(null);
+    const empleadosRef = ref(null);
+    const areasRef = ref(null);
+    const reportesRef = ref(null);
 
     // Global Reactive Data from Backend
     const summary = ref({
@@ -241,13 +247,46 @@ const App = {
       } else if (actionType === 'sync-time') {
         syncClockTime();
       } else if (actionType === 'export-csv') {
-        exportRecordsCsv();
+        if (activeModule.value === 'reportes' && reportesRef.value && reportesRef.value.exportCurrentReportCsv) {
+          reportesRef.value.exportCurrentReportCsv();
+        } else {
+          exportRecordsCsv();
+        }
       } else if (actionType === 'modal-clock') {
         navigateTo('relojes');
+        nextTick(() => {
+          if (relojesRef.value && relojesRef.value.openAddModal) {
+            relojesRef.value.openAddModal();
+          }
+        });
       } else if (actionType === 'modal-employee') {
         navigateTo('empleados');
+        nextTick(() => {
+          if (empleadosRef.value && empleadosRef.value.openNewEmployee) {
+            empleadosRef.value.openNewEmployee();
+          }
+        });
       } else if (actionType === 'modal-area') {
         navigateTo('areas');
+        nextTick(() => {
+          if (areasRef.value && areasRef.value.openNewArea) {
+            areasRef.value.openNewArea();
+          }
+        });
+      } else if (actionType === 'report-send-email') {
+        navigateTo('reportes');
+        nextTick(() => {
+          if (reportesRef.value && reportesRef.value.openSendEmailModal) {
+            reportesRef.value.openSendEmailModal();
+          }
+        });
+      } else if (actionType === 'report-smtp-config') {
+        navigateTo('reportes');
+        nextTick(() => {
+          if (reportesRef.value) {
+            reportesRef.value.isConfigModalOpen = true;
+          }
+        });
       } else if (actionType === 'test-clock-conn') {
         testPrimaryClock();
       }
@@ -344,7 +383,11 @@ const App = {
       onToast,
       exportRecordsCsv,
       openConfigModal,
-      onUpdateUser
+      onUpdateUser,
+      relojesRef,
+      empleadosRef,
+      areasRef,
+      reportesRef
     };
   },
   template: `
@@ -367,6 +410,7 @@ const App = {
         @toggle-sidebar="isSidebarCollapsed = !isSidebarCollapsed"
         @open-config="openConfigModal"
         @navigate="navigateTo"
+        @quick-action="handleQuickAction"
       />
 
       <!-- Main Workspace Layout -->
@@ -409,6 +453,7 @@ const App = {
 
           <ViewRelojes
             v-else-if="activeModule === 'relojes'"
+            ref="relojesRef"
             :devices="devices"
             :areas="areas"
             :is-syncing="isSyncing"
@@ -418,6 +463,7 @@ const App = {
 
           <ViewEmpleados
             v-else-if="activeModule === 'empleados'"
+            ref="empleadosRef"
             :employees="employees"
             :areas="areas"
             @refresh="fetchOverview(false)"
@@ -427,6 +473,7 @@ const App = {
 
           <ViewAreas
             v-else-if="activeModule === 'areas'"
+            ref="areasRef"
             :areas="areas"
             @refresh="fetchOverview(false)"
             @toast="onToast"
@@ -434,6 +481,7 @@ const App = {
 
           <ViewReportes
             v-else-if="activeModule === 'reportes'"
+            ref="reportesRef"
             :records="records"
             :employees="employees"
             :devices="devices"

@@ -7,7 +7,10 @@ export const MODULES_NAV = [
     title: 'Inicio', 
     shortLabel: 'Inicio', 
     icon: 'ph-house',
-    actions: []
+    actions: [
+      { id: 'sync_clock_home', label: 'Sincronizar Reloj', subtitle: 'Descargar checadas y usuarios de la terminal', icon: 'ph-arrows-clockwise', type: 'sync-clock' },
+      { id: 'sync_time_home', label: 'Calibrar Hora Reloj', subtitle: 'Ajustar hora del dispositivo vía ISAPI', icon: 'ph-clock-clockwise', type: 'sync-time' }
+    ]
   },
   { 
     id: 'monitor', 
@@ -15,8 +18,8 @@ export const MODULES_NAV = [
     shortLabel: 'Monitor en Vivo', 
     icon: 'ph-broadcast',
     actions: [
-      { id: 'sync_now', label: 'Extraer de Memoria (Pull)', icon: 'ph-arrows-clockwise', type: 'sync-clock' },
-      { id: 'export_csv', label: 'Exportar Bitácora (CSV)', icon: 'ph-download-simple', type: 'export-csv' }
+      { id: 'sync_now', label: 'Sincronizar Reloj (Pull)', subtitle: 'Extraer eventos de la memoria del reloj', icon: 'ph-arrows-clockwise', type: 'sync-clock' },
+      { id: 'export_csv', label: 'Exportar Bitácora (CSV)', subtitle: 'Descargar registros en formato CSV', icon: 'ph-download-simple', type: 'export-csv' }
     ]
   },
   { 
@@ -25,8 +28,9 @@ export const MODULES_NAV = [
     shortLabel: 'Relojes Checadores', 
     icon: 'ph-fingerprint',
     actions: [
-      { id: 'add_clock', label: 'Agregar Reloj ISAPI', icon: 'ph-plus-circle', type: 'modal-clock' },
-      { id: 'sync_time', label: 'Calibrar Hora Reloj', icon: 'ph-clock-clockwise', type: 'sync-time' }
+      { id: 'add_clock', label: 'Agregar Reloj Checador', subtitle: 'Registrar nueva terminal Hikvision ISAPI', icon: 'ph-plus-circle', type: 'modal-clock' },
+      { id: 'sync_clock_dev', label: 'Sincronizar Reloj Activo', subtitle: 'Extraer eventos y censo de usuarios', icon: 'ph-arrows-clockwise', type: 'sync-clock' },
+      { id: 'sync_time', label: 'Calibrar Hora Reloj', subtitle: 'Sincronizar hora del servidor al reloj', icon: 'ph-clock-clockwise', type: 'sync-time' }
     ]
   },
   { 
@@ -35,8 +39,8 @@ export const MODULES_NAV = [
     shortLabel: 'Empleados y Biometría', 
     icon: 'ph-users-three',
     actions: [
-      { id: 'new_emp', label: 'Nuevo Empleado (ISAPI)', icon: 'ph-user-plus', type: 'modal-employee' },
-      { id: 'sync_emp', label: 'Sincronizar Censo Reloj', icon: 'ph-arrows-clockwise', type: 'sync-clock' }
+      { id: 'new_emp', label: 'Nuevo Empleado (Alta ISAPI)', subtitle: 'Registrar colaborador y enviarlo al reloj', icon: 'ph-user-plus', type: 'modal-employee' },
+      { id: 'sync_emp', label: 'Importar Usuarios del Reloj', subtitle: 'Sincronizar censo desde la terminal', icon: 'ph-arrows-clockwise', type: 'sync-clock' }
     ]
   },
   { 
@@ -45,7 +49,7 @@ export const MODULES_NAV = [
     shortLabel: 'Áreas y Turnos', 
     icon: 'ph-buildings',
     actions: [
-      { id: 'new_area', label: 'Nueva Área / Turno', icon: 'ph-plus-circle', type: 'modal-area' }
+      { id: 'new_area', label: 'Nueva Área / Turno', subtitle: 'Crear departamento, turno y tolerancia', icon: 'ph-plus-circle', type: 'modal-area' }
     ]
   },
   { 
@@ -54,7 +58,9 @@ export const MODULES_NAV = [
     shortLabel: 'Reportes', 
     icon: 'ph-chart-bar',
     actions: [
-      { id: 'export_payroll', label: 'Descargar Reportes CSV', icon: 'ph-file-csv', type: 'export-csv' }
+      { id: 'send_report_email', label: 'Enviar Reporte por Correo', subtitle: 'Despachar reporte actual vía SMTP', icon: 'ph-paper-plane-tilt', type: 'report-send-email' },
+      { id: 'export_payroll', label: 'Descargar Reporte (CSV)', subtitle: 'Exportar vista actual a archivo CSV', icon: 'ph-file-csv', type: 'export-csv' },
+      { id: 'smtp_config', label: 'Configurar Correo (SMTP)', subtitle: 'Ajustar servidor y contraseña de aplicación', icon: 'ph-gear', type: 'report-smtp-config' }
     ]
   },
   { 
@@ -63,7 +69,8 @@ export const MODULES_NAV = [
     shortLabel: 'Configuración', 
     icon: 'ph-gear',
     actions: [
-      { id: 'test_conn', label: 'Probar Conexión Reloj', icon: 'ph-plugs-connected', type: 'test-clock-conn' }
+      { id: 'test_conn', label: 'Probar Conexión Reloj', subtitle: 'Verificar enlace HTTP Digest ISAPI', icon: 'ph-plugs-connected', type: 'test-clock-conn' },
+      { id: 'sync_time_cfg', label: 'Calibrar Hora Reloj', subtitle: 'Sincronizar hora del servidor al reloj', icon: 'ph-clock-clockwise', type: 'sync-time' }
     ]
   }
 ];
