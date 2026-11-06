@@ -60,6 +60,8 @@ const App = {
       type: 'checkin' // 'checkin' | 'rebote' | 'info'
     });
     let toastTimer = null;
+    let islandTimer = null;
+    const islandActivity = ref(null);
     let pollTimer = null;
     let lastTopRecordId = null;
 
@@ -94,6 +96,12 @@ const App = {
     const branchEmployees = computed(() => employees.value.filter(e => !e.reloj_asignado || e.reloj_asignado === primaryClock.value.nombre));
     const branchDevices = computed(() => devices.value.filter(d => d.id === primaryClock.value.id));
 
+    function showIslandActivity({ title, subtitle, badge, type = 'checkin', initials = '' }, ms = 5200) {
+      if (islandTimer) clearTimeout(islandTimer);
+      islandActivity.value = { id: Date.now(), title, subtitle, badge, type, initials };
+      islandTimer = setTimeout(() => { islandActivity.value = null; }, ms);
+    }
+
     function showToast({ title, subtitle, badge = 'EN VIVO', type = 'checkin' }) {
       if (toastTimer) clearTimeout(toastTimer);
       toast.value = {
@@ -123,13 +131,13 @@ const App = {
           const newest = data.recent_records[0];
           if (newest && lastTopRecordId !== null && newest.id > lastTopRecordId) {
             const isBounce = Boolean(newest.es_rebote);
-            showToast({
-              title: isBounce
-                ? `Rebote Ignorado: ${newest.nombre}`
-                : `¡Nueva Checada! ${newest.nombre}`,
-              subtitle: `ID #${newest.codigo_empleado} • Método: ${newest.metodo || 'BIOMÉTRICO'} • ${(newest.fecha_hora_evento || '').replace('T', ' ').slice(0, 19)}`,
-              badge: isBounce ? 'DEBOUNCE 180S' : 'PASE VÁLIDO',
-              type: isBounce ? 'rebote' : 'checkin'
+            const nm = (newest.nombre || '').trim();
+            showIslandActivity({
+              title: nm || 'Empleado #' + newest.codigo_empleado,
+              subtitle: (isBounce ? 'Rebote ignorado' : 'Checada registrada') + ' \u00b7 ' + (newest.metodo || 'BIOM\u00c9TRICO') + ' \u00b7 ' + (newest.fecha_hora_evento || '').replace('T', ' ').slice(11, 19),
+              badge: isBounce ? 'REBOTE' : 'V\u00c1LIDO',
+              type: isBounce ? 'rebote' : 'checkin',
+              initials: nm.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase() || '#'
             });
           }
           if (newest) {
@@ -306,12 +314,14 @@ const App = {
       window.removeEventListener('hashchange', handleHashChange);
       if (pollTimer) clearInterval(pollTimer);
       if (toastTimer) clearTimeout(toastTimer);
+      if (islandTimer) clearTimeout(islandTimer);
     });
 
     return {
       activeModule,
       isSidebarCollapsed,
       isSyncing,
+      islandActivity,
       isConfigModalOpen,
       configInitialSection,
       summary,
@@ -352,6 +362,9 @@ const App = {
         :user="currentUser"
         :branch-name="primaryClock.nombre + ' (' + primaryClock.ip + ')'"
         :live-count="summary.total_checadas || records.length"
+        :activity="islandActivity"
+        :is-syncing="isSyncing"
+        :branch-ip="primaryClock.ip"
         @toggle-sidebar="isSidebarCollapsed = !isSidebarCollapsed"
         @open-config="openConfigModal"
         @navigate="navigateTo"

@@ -26,7 +26,10 @@ export default {
       default: 0
     },
     branches: { type: Array, default: () => [] },
-    selectedBranchId: { type: [Number, String, null], default: null }
+    selectedBranchId: { type: [Number, String, null], default: null },
+    activity: { type: Object, default: null },
+    isSyncing: { type: Boolean, default: false },
+    branchIp: { type: String, default: '' }
   },
   emits: ['toggle-sidebar', 'open-config', 'navigate', 'select-branch'],
   setup(props, { emit }) {
@@ -38,13 +41,14 @@ export default {
     const titleMeasureRef = ref(null);
     const expandedWidth = 490;
     const compactWidth = ref(260);
+    const activityWidth = 400;
     let titleObserver = null;
 
     function measureCompactWidth() {
       const el = titleMeasureRef.value;
       if (!el) return;
       const titleW = Math.ceil(el.getBoundingClientRect().width);
-      compactWidth.value = Math.min(Math.max(titleW + 106, 210), expandedWidth);
+      compactWidth.value = Math.min(Math.max(titleW + 64, 150), expandedWidth);
     }
 
     const moduleDescriptions = {
@@ -102,10 +106,32 @@ export default {
       isMenuOpen.value = !isMenuOpen.value;
     }
 
+    // Actividad en vivo: evento de checada recibido o sincronizacion en curso
+    const liveActivity = computed(() => {
+      if (isIslandExpanded.value) return null;
+      if (props.activity) return props.activity;
+      if (props.isSyncing) {
+        return { id: 'sync', type: 'sync', title: 'Sincronizando reloj', subtitle: props.branchIp || 'ISAPI', badge: 'ISAPI', initials: '' };
+      }
+      return null;
+    });
+
     function handleIslandClick() {
       if (!isIslandExpanded.value) {
         isIslandExpanded.value = true;
       }
+    }
+
+    const shortcuts = [
+      { id: 'monitor', label: 'Monitor', icon: 'ph-broadcast' },
+      { id: 'relojes', label: 'Relojes', icon: 'ph-fingerprint' },
+      { id: 'empleados', label: 'Empleados', icon: 'ph-users-three' },
+      { id: 'reportes', label: 'Reportes', icon: 'ph-chart-bar' }
+    ];
+
+    function goTo(id) {
+      isIslandExpanded.value = false;
+      emit('navigate', id);
     }
 
     function closeIsland() {
@@ -167,6 +193,10 @@ export default {
       expandedWidth,
       compactWidth,
       handleIslandClick,
+      liveActivity,
+      activityWidth,
+      shortcuts,
+      goTo,
       closeIsland,
       currentModuleInfo,
       pickBranch,
@@ -197,70 +227,114 @@ export default {
       <div 
         ref="islandContainerRef"
         @click="handleIslandClick"
-        class="dynamic-island absolute left-1/2 -translate-x-1/2 top-3 z-50 select-none bg-[#09090B] text-white"
-        :class="{ 'is-expanded': isIslandExpanded, 'is-compact': !isIslandExpanded }"
-        :style="{ width: (isIslandExpanded ? expandedWidth : compactWidth) + 'px' }"
-        :title="!isIslandExpanded ? 'Ver información del módulo' : ''">
+        class="dynamic-island absolute left-1/2 -translate-x-1/2 top-3 z-50 select-none text-white"
+        :class="{ 'is-expanded': isIslandExpanded, 'is-compact': !isIslandExpanded && !liveActivity, 'is-activity': !!liveActivity }"
+        :style="{ width: (isIslandExpanded ? expandedWidth : (liveActivity ? activityWidth : compactWidth)) + 'px' }">
 
         <span ref="titleMeasureRef" aria-hidden="true" class="absolute invisible pointer-events-none whitespace-nowrap text-sm font-bold tracking-tight" style="left:-9999px; top:0;">{{ title }}</span>
 
-        <div class="island-row h-10 grid items-center px-3" style="grid-template-columns: 28px 1fr 28px; column-gap: 10px;">
-          <div class="w-7 h-7"></div>
+        <div class="island-row relative grid items-center px-3" :class="{ 'is-activity': !!liveActivity }" style="grid-template-columns: 1fr;">
 
-          <h1 class="text-sm font-bold text-white tracking-tight whitespace-nowrap text-center truncate">{{ title }}</h1>
+          <Transition name="island-swap">
+            <!-- Estado: ACTIVIDAD EN VIVO -->
+            <div v-if="liveActivity" :key="'act-' + liveActivity.id" class="absolute inset-0 flex items-center gap-3 px-3">
+              <div class="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-xs font-bold"
+                :class="liveActivity.type === 'rebote' ? 'bg-amber-400/20 text-amber-300' : (liveActivity.type === 'sync' ? 'bg-sky-400/20 text-sky-300' : 'bg-emerald-400/20 text-emerald-300')">
+                <i v-if="liveActivity.type === 'sync'" class="ph ph-arrows-clockwise animate-spin text-base"></i>
+                <span v-else>{{ liveActivity.initials }}</span>
+              </div>
+              <div class="min-w-0 flex-1 text-left leading-tight">
+                <p class="text-[13px] font-bold text-white truncate">{{ liveActivity.title }}</p>
+                <p class="text-[10px] mono-code text-charcoal-300 truncate">{{ liveActivity.subtitle }}</p>
+              </div>
+              <span class="text-[9px] mono-code font-bold px-2 py-1 rounded-full shrink-0"
+                :class="liveActivity.type === 'rebote' ? 'bg-amber-400/15 text-amber-300' : (liveActivity.type === 'sync' ? 'bg-sky-400/15 text-sky-300' : 'bg-emerald-400/15 text-emerald-300')">
+                {{ liveActivity.badge }}
+              </span>
+            </div>
 
-          <div class="relative w-7 h-7">
-            
-            <button 
-              type="button"
-              @click.stop="closeIsland"
-              title="Cerrar (Esc)"
-              :tabindex="isIslandExpanded ? 0 : -1"
-              class="absolute inset-0 rounded-full bg-white/10 hover:bg-white/20 text-charcoal-300 hover:text-white flex items-center justify-center text-xs transition-all duration-200 cursor-pointer"
-              :class="isIslandExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'">
-              <i class="ph ph-x"></i>
-            </button>
-          </div>
+            <!-- Estado: TITULO (compacto / expandido) -->
+            <div v-else key="title" class="absolute inset-0 flex items-center justify-center px-8">
+              <h1 class="text-sm font-bold text-white tracking-tight whitespace-nowrap truncate">{{ title }}</h1>
+            </div>
+          </Transition>
+
+          <!-- Boton cerrar (solo expandido) -->
+          <button 
+            type="button"
+            @click.stop="closeIsland"
+            title="Cerrar (Esc)"
+            :tabindex="isIslandExpanded ? 0 : -1"
+            class="absolute right-2.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 text-charcoal-300 hover:text-white flex items-center justify-center text-xs transition-all duration-300 cursor-pointer"
+            :class="isIslandExpanded ? 'opacity-100 scale-100' : 'opacity-0 scale-50 pointer-events-none'">
+            <i class="ph ph-x"></i>
+          </button>
         </div>
+
+        <!-- Barra de progreso de la actividad -->
+        <div v-if="liveActivity && liveActivity.type !== 'sync'" :key="'bar-' + liveActivity.id" class="island-progress" :class="{ 'is-bounce': liveActivity.type === 'rebote' }"><span></span></div>
 
         <div class="island-body" :class="{ 'is-expanded': isIslandExpanded }">
           <div class="island-body-clip">
             <div class="island-body-content" :style="{ width: expandedWidth + 'px' }">
-              <!-- INICIO: selector de sucursal -->
-              <div v-if="activeModule === 'inicio'" class="mx-5 pt-3 pb-5 border-t border-white/10">
-                <span class="block text-center text-[10px] mono-code text-emerald-400 font-semibold uppercase tracking-wider">Cambiar de sucursal</span>
-                <div class="mt-3 space-y-1.5">
-                  <button
-                    v-for="b in branches"
-                    :key="b.id"
-                    type="button"
-                    @click.stop="pickBranch(b)"
-                    class="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-colors cursor-pointer"
-                    :class="b.id === selectedBranchId ? 'bg-white/15' : 'bg-white/5 hover:bg-white/10'">
-                    <span class="w-2 h-2 rounded-full shrink-0" :class="b.estado === 'ONLINE' ? 'bg-emerald-400' : 'bg-red-400'"></span>
-                    <span class="flex-1 min-w-0">
-                      <span class="block text-sm font-semibold text-white truncate">{{ b.nombre }}</span>
-                      <span class="block text-[10px] mono-code text-charcoal-300">{{ b.ip }} · {{ b.ubicacion }}</span>
-                    </span>
-                    <i v-if="b.id === selectedBranchId" class="ph ph-check text-emerald-400"></i>
-                  </button>
-                  <p v-if="!branches.length" class="text-xs text-charcoal-300 text-center py-2">No hay sucursales registradas.</p>
-                </div>
-              </div>
+              <div class="island-stagger mx-5 pt-3 pb-5 border-t border-white/10">
 
-              <div v-else class="mx-5 pt-3 pb-5 border-t border-white/10 text-center">
-                <span class="inline-block text-[10px] mono-code text-emerald-400 font-semibold uppercase tracking-wider">{{ currentModuleInfo.badge }}</span>
-                <p class="text-xs text-charcoal-300 leading-relaxed mt-2">
-                  {{ currentModuleInfo.desc }}
-                </p>
-                <div class="flex items-center justify-center gap-1.5 mt-3.5 text-[10px] mono-code flex-wrap">
-                  <span 
-                    v-for="tag in currentModuleInfo.tags" 
-                    :key="tag"
-                    class="px-2 py-0.5 rounded-md bg-white/10 text-charcoal-300 border border-white/5 font-medium">
-                    {{ tag }}
-                  </span>
+                <!-- INICIO: selector de sucursal -->
+                <template v-if="activeModule === 'inicio'">
+                  <span class="block text-center text-[10px] mono-code text-emerald-400 font-semibold uppercase tracking-wider">Cambiar de sucursal</span>
+                  <div class="mt-3 space-y-1.5">
+                    <button
+                      v-for="b in branches"
+                      :key="b.id"
+                      type="button"
+                      @click.stop="pickBranch(b)"
+                      class="w-full flex items-center gap-3 px-3 py-2 rounded-2xl text-left transition-all duration-200 cursor-pointer active:scale-[0.98]"
+                      :class="b.id === selectedBranchId ? 'bg-white/15' : 'bg-white/5 hover:bg-white/10'">
+                      <span class="w-2 h-2 rounded-full shrink-0" :class="b.estado === 'ONLINE' ? 'bg-emerald-400' : 'bg-red-400'"></span>
+                      <span class="flex-1 min-w-0">
+                        <span class="block text-sm font-semibold text-white truncate">{{ b.nombre }}</span>
+                        <span class="block text-[10px] mono-code text-charcoal-300">{{ b.ip }} · {{ b.ubicacion }}</span>
+                      </span>
+                      <i v-if="b.id === selectedBranchId" class="ph ph-check text-emerald-400"></i>
+                    </button>
+                    <p v-if="!branches.length" class="text-xs text-charcoal-300 text-center py-2">No hay sucursales registradas.</p>
+                  </div>
+                </template>
+
+                <!-- Otros modulos: descripcion -->
+                <template v-else>
+                  <div class="text-center">
+                    <span class="inline-block text-[10px] mono-code text-emerald-400 font-semibold uppercase tracking-wider">{{ currentModuleInfo.badge }}</span>
+                  </div>
+                  <p class="text-xs text-charcoal-300 leading-relaxed mt-2 text-center">{{ currentModuleInfo.desc }}</p>
+                </template>
+
+                <!-- Estado en vivo -->
+                <div class="mt-4 grid grid-cols-2 gap-2">
+                  <div class="rounded-2xl bg-white/5 px-3 py-2">
+                    <p class="text-[9px] mono-code uppercase tracking-wider text-charcoal-400">Checadas</p>
+                    <p class="text-base font-bold mono-code text-white leading-tight">{{ liveCount }}</p>
+                  </div>
+                  <div class="rounded-2xl bg-white/5 px-3 py-2">
+                    <p class="text-[9px] mono-code uppercase tracking-wider text-charcoal-400">Reloj activo</p>
+                    <p class="text-xs font-bold text-white leading-tight truncate mt-1">{{ branchName }}</p>
+                  </div>
                 </div>
+
+                <!-- Atajos -->
+                <div class="mt-3 flex items-center justify-center gap-1.5">
+                  <button
+                    v-for="sc in shortcuts"
+                    :key="sc.id"
+                    type="button"
+                    @click.stop="goTo(sc.id)"
+                    :disabled="activeModule === sc.id"
+                    class="flex-1 flex flex-col items-center gap-1 py-2 rounded-2xl bg-white/5 hover:bg-white/12 text-charcoal-300 hover:text-white text-[10px] font-semibold transition-all duration-200 cursor-pointer active:scale-95 disabled:opacity-30 disabled:cursor-default disabled:hover:bg-white/5">
+                    <i :class="['ph', sc.icon, 'text-base']"></i>
+                    <span>{{ sc.label }}</span>
+                  </button>
+                </div>
+
               </div>
             </div>
           </div>
