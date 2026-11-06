@@ -96,9 +96,9 @@ const App = {
     const branchEmployees = computed(() => employees.value.filter(e => !e.reloj_asignado || e.reloj_asignado === primaryClock.value.nombre));
     const branchDevices = computed(() => devices.value.filter(d => d.id === primaryClock.value.id));
 
-    function showIslandActivity({ title, subtitle, badge, type = 'checkin', initials = '' }, ms = 5200) {
+    function showIslandActivity({ title, method = '', badge = '', type = 'checkin' }, ms = 3200) {
       if (islandTimer) clearTimeout(islandTimer);
-      islandActivity.value = { id: Date.now(), title, subtitle, badge, type, initials };
+      islandActivity.value = { id: Date.now(), title, method, badge, type };
       islandTimer = setTimeout(() => { islandActivity.value = null; }, ms);
     }
 
@@ -134,10 +134,9 @@ const App = {
             const nm = (newest.nombre || '').trim();
             showIslandActivity({
               title: nm || 'Empleado #' + newest.codigo_empleado,
-              subtitle: (isBounce ? 'Rebote ignorado' : 'Checada registrada') + ' \u00b7 ' + (newest.metodo || 'BIOM\u00c9TRICO') + ' \u00b7 ' + (newest.fecha_hora_evento || '').replace('T', ' ').slice(11, 19),
-              badge: isBounce ? 'REBOTE' : 'V\u00c1LIDO',
-              type: isBounce ? 'rebote' : 'checkin',
-              initials: nm.split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase() || '#'
+              method: newest.metodo || 'BIOMÉTRICO',
+              badge: isBounce ? 'REBOTE' : 'VÁLIDO',
+              type: isBounce ? 'rebote' : 'checkin'
             });
           }
           if (newest) {

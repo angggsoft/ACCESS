@@ -45,27 +45,18 @@ export default {
   template: `
     <div class="w-full space-y-5 animate-in fade-in duration-150">
 
-      <!-- HEADER -->
-      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h2 class="text-3xl font-bold text-charcoal-900 tracking-tight flex items-center gap-3">
-            Monitor en vivo
-            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-          </h2>
-          <p class="text-xs text-sky-600 mt-0.5">Se actualiza automáticamente</p>
-        </div>
-        <div class="flex flex-wrap items-center gap-2.5">
-          <button type="button" :disabled="isSyncing" @click="$emit('sync-clock')"
-            class="px-4 py-2 rounded-xl bg-white border border-charcoal-200 hover:bg-charcoal-50 text-charcoal-900 text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-50">
-            <i class="ph ph-arrows-clockwise text-sm" :class="{ 'animate-spin': isSyncing }"></i>
-            <span>{{ isSyncing ? 'Sincronizando…' : 'Sincronizar' }}</span>
-          </button>
-          <button type="button" @click="$emit('export-csv')"
-            class="px-4 py-2 rounded-xl bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-2 cursor-pointer">
-            <i class="ph ph-download-simple text-sm"></i>
-            <span>Exportar CSV</span>
-          </button>
-        </div>
+      <!-- ACCIONES -->
+      <div class="flex items-center justify-end gap-2.5">
+        <button type="button" :disabled="isSyncing" @click="$emit('sync-clock')"
+          class="px-4 py-2 rounded-xl bg-white border border-charcoal-200 hover:bg-charcoal-50 text-charcoal-900 text-xs font-bold flex items-center gap-2 cursor-pointer disabled:opacity-50">
+          <i class="ph ph-arrows-clockwise text-sm" :class="{ 'animate-spin': isSyncing }"></i>
+          <span>{{ isSyncing ? 'Sincronizando…' : 'Sincronizar' }}</span>
+        </button>
+        <button type="button" @click="$emit('export-csv')"
+          class="px-4 py-2 rounded-xl bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-2 cursor-pointer">
+          <i class="ph ph-download-simple text-sm"></i>
+          <span>Exportar CSV</span>
+        </button>
       </div>
 
       <!-- 3 KPIs -->

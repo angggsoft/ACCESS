@@ -169,30 +169,23 @@ export default {
   template: `
     <div class="w-full space-y-5 animate-in fade-in duration-150">
 
-      <!-- HEADER -->
-      <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-        <div>
-          <h2 class="text-3xl font-bold text-charcoal-900 tracking-tight">Empleados</h2>
-          <p class="text-xs text-sky-600 mt-0.5">Alta y credenciales biométricas</p>
-        </div>
+      <!-- ACCIONES -->
+      <div class="flex flex-wrap items-center justify-end gap-2.5">
+        <button
+          type="button"
+          @click="$emit('sync-clock')"
+          class="px-4 py-2.5 rounded-full bg-charcoal-100 hover:bg-charcoal-200 text-charcoal-900 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer">
+          <i class="ph ph-arrows-clockwise text-sm"></i>
+          <span>Importar Usuarios del Reloj</span>
+        </button>
 
-        <div class="flex flex-wrap items-center gap-2.5">
-          <button
-            type="button"
-            @click="$emit('sync-clock')"
-            class="px-4 py-2.5 rounded-full bg-charcoal-100 hover:bg-charcoal-200 text-charcoal-900 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer">
-            <i class="ph ph-arrows-clockwise text-sm"></i>
-            <span>Importar Usuarios del Reloj</span>
-          </button>
-
-          <button
-            type="button"
-            @click="openNewEmployee"
-            class="px-5 py-2.5 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer">
-            <i class="ph ph-user-plus text-sm"></i>
-            <span>Nuevo Empleado (Alta ISAPI)</span>
-          </button>
-        </div>
+        <button
+          type="button"
+          @click="openNewEmployee"
+          class="px-5 py-2.5 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer">
+          <i class="ph ph-user-plus text-sm"></i>
+          <span>Nuevo Empleado (Alta ISAPI)</span>
+        </button>
       </div>
 
       <!-- FILTERS -->

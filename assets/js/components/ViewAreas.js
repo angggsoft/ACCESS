@@ -84,13 +84,8 @@ export default {
   template: `
     <div class="w-full space-y-6 animate-in fade-in duration-150">
 
-      <!-- HEADER -->
-      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h2 class="text-3xl font-bold text-charcoal-900 tracking-tight">Áreas y turnos</h2>
-          <p class="text-xs text-sky-600 mt-0.5">Horarios y tolerancias</p>
-        </div>
-
+      <!-- ACCIONES -->
+      <div class="flex items-center justify-end">
         <button
           type="button"
           @click="openNewArea"

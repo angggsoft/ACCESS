@@ -368,19 +368,6 @@ export default {
   template: `
     <div class="w-full space-y-6 animate-in fade-in duration-150 pb-8">
 
-      <!-- HEADER PRINCIPAL -->
-      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <div class="flex items-center gap-2.5">
-            <h2 class="text-3xl font-bold text-charcoal-900 tracking-tight">Configuración</h2>
-            <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-charcoal-100 text-charcoal-700 mono-code">
-              Panel de Control
-            </span>
-          </div>
-          <p class="text-xs text-sky-600 mt-0.5">Parámetros de asistencia, conexión con el checador, red, correo y preferencias</p>
-        </div>
-
-      </div>
 
       <!-- TABS NAVEGACIÓN -->
       <div class="flex items-center gap-2 border-b border-charcoal-200 pb-2 overflow-x-auto scrollbar-none">

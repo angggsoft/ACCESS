@@ -422,45 +422,36 @@ export default {
   template: `
     <div class="w-full space-y-6 animate-in fade-in duration-150 pb-12">
 
-      <!-- HEADER PRINCIPAL -->
-      <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-        <div>
-          <h2 class="text-3xl font-bold text-charcoal-900 tracking-tight">Reportes</h2>
-          <p class="text-xs text-charcoal-500 mt-1">
-            Auditoría de asistencia por colaborador, reloj checador, departamentos y envío automatizado por correo
-          </p>
-        </div>
+      <!-- ACCIONES PRINCIPALES -->
+      <div class="flex items-center justify-end gap-2.5 flex-wrap">
+        <!-- Botón Configuración de Correo -->
+        <button
+          type="button"
+          @click="isConfigModalOpen = true"
+          class="px-4 py-2.5 rounded-2xl bg-white hover:bg-charcoal-100 text-charcoal-800 border border-charcoal-200 text-xs font-bold flex items-center gap-2 shadow-2xs transition-all cursor-pointer shrink-0">
+          <i class="ph ph-gear text-base"></i>
+          <span>Configurar Correo (SMTP)</span>
+          <span v-if="emailConfig.is_configured" class="w-2 h-2 rounded-full bg-emerald-500" title="SMTP Configurado"></span>
+          <span v-else class="w-2 h-2 rounded-full bg-amber-500" title="SMTP Pendiente"></span>
+        </button>
 
-        <div class="flex items-center gap-2.5 flex-wrap">
-          <!-- Botón Configuración de Correo -->
-          <button
-            type="button"
-            @click="isConfigModalOpen = true"
-            class="px-4 py-2.5 rounded-2xl bg-white hover:bg-charcoal-100 text-charcoal-800 border border-charcoal-200 text-xs font-bold flex items-center gap-2 shadow-2xs transition-all cursor-pointer shrink-0">
-            <i class="ph ph-gear text-base"></i>
-            <span>Configurar Correo (SMTP)</span>
-            <span v-if="emailConfig.is_configured" class="w-2 h-2 rounded-full bg-emerald-500" title="SMTP Configurado"></span>
-            <span v-else class="w-2 h-2 rounded-full bg-amber-500" title="SMTP Pendiente"></span>
-          </button>
+        <!-- Botón Descargar CSV -->
+        <button
+          type="button"
+          @click="exportCurrentReportCsv"
+          class="px-4 py-2.5 rounded-2xl bg-white hover:bg-charcoal-100 text-charcoal-800 border border-charcoal-200 text-xs font-bold flex items-center gap-2 shadow-2xs transition-all cursor-pointer shrink-0">
+          <i class="ph ph-file-csv text-base"></i>
+          <span>Descargar CSV</span>
+        </button>
 
-          <!-- Botón Descargar CSV -->
-          <button
-            type="button"
-            @click="exportCurrentReportCsv"
-            class="px-4 py-2.5 rounded-2xl bg-white hover:bg-charcoal-100 text-charcoal-800 border border-charcoal-200 text-xs font-bold flex items-center gap-2 shadow-2xs transition-all cursor-pointer shrink-0">
-            <i class="ph ph-file-csv text-base"></i>
-            <span>Descargar CSV</span>
-          </button>
-
-          <!-- Botón Enviar por Correo -->
-          <button
-            type="button"
-            @click="openSendEmailModal"
-            class="px-5 py-2.5 rounded-2xl bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer shrink-0">
-            <i class="ph ph-paper-plane-tilt text-base"></i>
-            <span>Enviar Reporte por Correo</span>
-          </button>
-        </div>
+        <!-- Botón Enviar por Correo -->
+        <button
+          type="button"
+          @click="openSendEmailModal"
+          class="px-5 py-2.5 rounded-2xl bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all cursor-pointer shrink-0">
+          <i class="ph ph-paper-plane-tilt text-base"></i>
+          <span>Enviar Reporte por Correo</span>
+        </button>
       </div>
 
       <!-- SELECTOR DE TIPOS DE REPORTE (TABS EJECUTIVAS) -->

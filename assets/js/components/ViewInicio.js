@@ -152,21 +152,15 @@ export default {
   template: `
     <div class="w-full flex-1 min-h-0 flex flex-col space-y-4 animate-in fade-in duration-150">
 
-      <!-- Saludo + Acciones de hardware -->
-      <div class="flex items-start justify-between gap-4 shrink-0">
-        <div>
-          <h2 class="text-3xl font-bold text-charcoal-900 tracking-tight">Hola, {{ firstName }}</h2>
-          <p class="text-xs text-sky-600 mt-0.5">Panel de asistencia</p>
-        </div>
-        <div class="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            @click="$emit('sync-clock')"
-            class="flex items-center gap-2 text-xs font-semibold text-charcoal-700 bg-white hover:bg-charcoal-50 px-4 py-2 rounded-xl border border-charcoal-200 shadow-2xs transition-all cursor-pointer">
-            <i class="ph ph-arrows-clockwise text-sm" :class="{ 'animate-spin': isSyncing }"></i>
-            <span>{{ isSyncing ? 'Sincronizando…' : 'Sincronizar reloj' }}</span>
-          </button>
-        </div>
+      <!-- Acciones de hardware -->
+      <div class="flex items-center justify-end gap-2 shrink-0">
+        <button
+          type="button"
+          @click="$emit('sync-clock')"
+          class="flex items-center gap-2 text-xs font-semibold text-charcoal-700 bg-white hover:bg-charcoal-50 px-4 py-2 rounded-xl border border-charcoal-200 shadow-2xs transition-all cursor-pointer">
+          <i class="ph ph-arrows-clockwise text-sm" :class="{ 'animate-spin': isSyncing }"></i>
+          <span>{{ isSyncing ? 'Sincronizando…' : 'Sincronizar reloj' }}</span>
+        </button>
       </div>
 
       <!-- 4 KPIs principales -->

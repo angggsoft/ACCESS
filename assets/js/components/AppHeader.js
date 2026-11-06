@@ -1,5 +1,5 @@
 // Component: AppHeader
-// Desktop top bar with sidebar toggle, downward Dynamic Island module description, live webhook indicator, and user profile popover
+// Desktop top bar with sidebar toggle, single-line Dynamic Island status pill, live webhook indicator, and user profile popover
 
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 
@@ -36,111 +36,35 @@ export default {
     const isMenuOpen = ref(false);
     const menuContainerRef = ref(null);
 
-    const isIslandExpanded = ref(false);
-    const islandContainerRef = ref(null);
-    const titleMeasureRef = ref(null);
-    const expandedWidth = 490;
-    const compactWidth = ref(260);
-    const activityWidth = 400;
-    let titleObserver = null;
+    const measureRef = ref(null);
+    const pillWidth = ref(180);
+    let resizeObserver = null;
 
-    function measureCompactWidth() {
-      const el = titleMeasureRef.value;
-      if (!el) return;
-      const titleW = Math.ceil(el.getBoundingClientRect().width);
-      compactWidth.value = Math.min(Math.max(titleW + 64, 150), expandedWidth);
-    }
-
-    const moduleDescriptions = {
-      'inicio': {
-        title: 'Inicio',
-        badge: 'Hub Biométrico ISAPI',
-        desc: 'Panel ejecutivo de asistencia, estado en tiempo real de relojes checadores Hikvision, áreas operativas y resumen de pre-nómina.',
-        tags: ['Hikvision MinMoe', 'Webhook Push + Pull', 'SQLite Local']
-      },
-      'monitor': {
-        title: 'Monitor de Checadas en Vivo',
-        badge: 'Tiempo Real • Auto-Sync',
-        desc: 'Bitácora de checadas con actualización automática en pantalla. Filtra eventos biométricos (Huella, Rostro, PIN, Tarjeta) y aplica debounce anti-rebote de 180s.',
-        tags: ['Push HTTP 8000', 'Debounce 180s', 'Reconciliación ISAPI']
-      },
-      'relojes': {
-        title: 'Relojes Checadores',
-        badge: 'Hardware ISAPI',
-        desc: 'Gestión y diagnóstico de terminales biométricas Hikvision DS-K1T320MFWX-B. Calibración de hora, configuración de webhooks y extracción de memoria.',
-        tags: ['192.168.11.71', 'Wi-Fi TBS', 'Digest Auth']
-      },
-      'empleados': {
-        title: 'Plantilla de Empleados',
-        badge: 'Directorio y Biometría',
-        desc: 'Administración de colaboradores sincronizada bidireccionalmente con la memoria de los relojes checadores (PIN, Huella, Rostro FDLib y permisos Admin UI).',
-        tags: ['Alta Remota ISAPI', 'Enrolamiento Facial', 'PIN Teclado']
-      },
-      'areas': {
-        title: 'Áreas y Turnos',
-        badge: 'Estructura Organizacional',
-        desc: 'Definición de departamentos, horarios laborales, ventanas de tolerancia de entrada y asignación de terminales biométricas por zona.',
-        tags: ['Departamentos', 'Horarios', 'Tolerancia']
-      },
-      'reportes': {
-        title: 'Reportes',
-        badge: 'Cálculo y Exportación',
-        desc: 'Consolidado de asistencia para pre-nómina, depuración automática de rebotes, conteo de incidencias y exportación directa a Excel / CSV.',
-        tags: ['100% Conciliado', 'Exportar CSV', 'Auditoría']
-      },
-      'configuracion': {
-        title: 'Configuración del Sistema',
-        badge: 'Centro de Control y Parámetros',
-        desc: 'Ajuste del filtro anti-rebote (debounce), calibración de hora, diagnóstico de hardware ISAPI, servidor local y perfil del operador.',
-        tags: ['Anti-Rebote Dinámico', 'Hikvision ISAPI', 'SQLite access.db']
-      }
-    };
-
-    const currentModuleInfo = computed(() => {
-      return moduleDescriptions[props.activeModule] || moduleDescriptions['inicio'];
-    });
-
-    function toggleMenu(e) {
-      if (e) e.stopPropagation();
-      isIslandExpanded.value = false;
-      isMenuOpen.value = !isMenuOpen.value;
-    }
-
-    // Actividad en vivo: evento de checada recibido o sincronizacion en curso
+    // Actividad o proceso activo en la isla (sin estado expandido)
     const liveActivity = computed(() => {
-      if (isIslandExpanded.value) return null;
       if (props.activity) return props.activity;
       if (props.isSyncing) {
-        return { id: 'sync', type: 'sync', title: 'Sincronizando reloj', subtitle: props.branchIp || 'ISAPI', badge: 'ISAPI', initials: '' };
+        return {
+          id: 'sync',
+          type: 'sync',
+          title: 'Sincronizando reloj…',
+          method: '',
+          badge: ''
+        };
       }
       return null;
     });
 
-    function handleIslandClick() {
-      if (!isIslandExpanded.value) {
-        isIslandExpanded.value = true;
-      }
+    function measurePillWidth() {
+      const el = measureRef.value;
+      if (!el) return;
+      const contentW = Math.ceil(el.getBoundingClientRect().width);
+      pillWidth.value = Math.min(Math.max(contentW + 44, 136), 520);
     }
 
-    const shortcuts = [
-      { id: 'monitor', label: 'Monitor', icon: 'ph-broadcast' },
-      { id: 'relojes', label: 'Relojes', icon: 'ph-fingerprint' },
-      { id: 'empleados', label: 'Empleados', icon: 'ph-users-three' },
-      { id: 'reportes', label: 'Reportes', icon: 'ph-chart-bar' }
-    ];
-
-    function goTo(id) {
-      isIslandExpanded.value = false;
-      emit('navigate', id);
-    }
-
-    function closeIsland() {
-      isIslandExpanded.value = false;
-    }
-
-    function pickBranch(b) {
-      emit('select-branch', b.id);
-      isIslandExpanded.value = false;
+    function toggleMenu(e) {
+      if (e) e.stopPropagation();
+      isMenuOpen.value = !isMenuOpen.value;
     }
 
     function openConfig(section) {
@@ -152,14 +76,10 @@ export default {
       if (menuContainerRef.value && !menuContainerRef.value.contains(e.target)) {
         isMenuOpen.value = false;
       }
-      if (islandContainerRef.value && !islandContainerRef.value.contains(e.target)) {
-        isIslandExpanded.value = false;
-      }
     }
 
     function handleKeydown(e) {
       if (e.key === 'Escape') {
-        isIslandExpanded.value = false;
         isMenuOpen.value = false;
       }
     }
@@ -167,19 +87,21 @@ export default {
     onMounted(() => {
       window.addEventListener('click', handleClickOutside);
       window.addEventListener('keydown', handleKeydown);
-      measureCompactWidth();
-      if (typeof ResizeObserver !== 'undefined' && titleMeasureRef.value) {
-        titleObserver = new ResizeObserver(measureCompactWidth);
-        titleObserver.observe(titleMeasureRef.value);
+      measurePillWidth();
+      if (typeof ResizeObserver !== 'undefined' && measureRef.value) {
+        resizeObserver = new ResizeObserver(measurePillWidth);
+        resizeObserver.observe(measureRef.value);
       }
     });
 
-    watch(() => props.title, () => nextTick(measureCompactWidth));
+    watch([() => props.title, liveActivity], () => {
+      nextTick(measurePillWidth);
+    });
 
     onUnmounted(() => {
       window.removeEventListener('click', handleClickOutside);
       window.removeEventListener('keydown', handleKeydown);
-      if (titleObserver) titleObserver.disconnect();
+      if (resizeObserver) resizeObserver.disconnect();
     });
 
     return {
@@ -187,26 +109,16 @@ export default {
       isMenuOpen,
       menuContainerRef,
       toggleMenu,
-      isIslandExpanded,
-      islandContainerRef,
-      titleMeasureRef,
-      expandedWidth,
-      compactWidth,
-      handleIslandClick,
+      measureRef,
+      pillWidth,
       liveActivity,
-      activityWidth,
-      shortcuts,
-      goTo,
-      closeIsland,
-      currentModuleInfo,
-      pickBranch,
       openConfig
     };
   },
   template: `
     <header class="h-16 shrink-0 bg-white border-b border-charcoal-200 pr-6 flex items-center justify-between relative z-50 shadow-[0_1px_3px_rgba(0,0,0,0.02)] w-full">
       
-      <!-- LEFT: Sidebar toggle + COGA Logo -->
+      <!-- LEFT: Sidebar toggle + Logo -->
       <div class="flex items-center z-10">
         <div class="w-16 h-16 flex items-center justify-center shrink-0">
           <button 
@@ -223,121 +135,70 @@ export default {
         </a>
       </div>
 
-      <!-- CENTER: DYNAMIC ISLAND -->
-      <div 
-        ref="islandContainerRef"
-        @click="handleIslandClick"
-        class="dynamic-island absolute left-1/2 -translate-x-1/2 top-3 z-50 select-none text-white"
-        :class="{ 'is-expanded': isIslandExpanded, 'is-compact': !isIslandExpanded && !liveActivity, 'is-activity': !!liveActivity }"
-        :style="{ width: (isIslandExpanded ? expandedWidth : (liveActivity ? activityWidth : compactWidth)) + 'px' }">
+      <!-- CENTER: DYNAMIC ISLAND (Single-line status pill) -->
+      <div class="absolute inset-0 flex items-center justify-center pointer-events-none z-40">
+        <!-- Medidor invisible de ancho exacto para cualquier estado -->
+        <span
+          ref="measureRef"
+          aria-hidden="true"
+          class="fixed invisible pointer-events-none inline-flex items-center gap-2.5 whitespace-nowrap"
+          style="left:-9999px; top:0;">
+          <template v-if="liveActivity && liveActivity.type === 'sync'">
+            <span class="w-3.5 h-3.5 shrink-0"></span>
+            <span class="text-xs font-semibold tracking-tight">{{ liveActivity.title }}</span>
+          </template>
+          <template v-else-if="liveActivity">
+            <span class="w-2 h-2 shrink-0"></span>
+            <span class="text-xs font-bold tracking-tight">{{ liveActivity.title }}</span>
+            <span v-if="liveActivity.method" class="text-[10px] mono-code">{{ liveActivity.method }}</span>
+            <span v-if="liveActivity.badge" class="text-[9px] mono-code font-bold px-2 py-0.5">{{ liveActivity.badge }}</span>
+          </template>
+          <template v-else>
+            <span class="text-sm font-bold tracking-tight">{{ title }}</span>
+          </template>
+        </span>
 
-        <span ref="titleMeasureRef" aria-hidden="true" class="absolute invisible pointer-events-none whitespace-nowrap text-sm font-bold tracking-tight" style="left:-9999px; top:0;">{{ title }}</span>
-
-        <div class="island-row relative grid items-center px-3" :class="{ 'is-activity': !!liveActivity }" style="grid-template-columns: 1fr;">
+        <div
+          class="dynamic-island relative flex items-center justify-center select-none text-white pointer-events-auto"
+          :class="{ 'is-activity': !!liveActivity }"
+          :style="{ width: pillWidth + 'px' }">
 
           <Transition name="island-swap">
-            <!-- Estado: ACTIVIDAD EN VIVO -->
-            <div v-if="liveActivity" :key="'act-' + liveActivity.id" class="absolute inset-0 flex items-center gap-3 px-3">
-              <div class="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-xs font-bold"
-                :class="liveActivity.type === 'rebote' ? 'bg-amber-400/20 text-amber-300' : (liveActivity.type === 'sync' ? 'bg-sky-400/20 text-sky-300' : 'bg-emerald-400/20 text-emerald-300')">
-                <i v-if="liveActivity.type === 'sync'" class="ph ph-arrows-clockwise animate-spin text-base"></i>
-                <span v-else>{{ liveActivity.initials }}</span>
-              </div>
-              <div class="min-w-0 flex-1 text-left leading-tight">
-                <p class="text-[13px] font-bold text-white truncate">{{ liveActivity.title }}</p>
-                <p class="text-[10px] mono-code text-charcoal-300 truncate">{{ liveActivity.subtitle }}</p>
-              </div>
-              <span class="text-[9px] mono-code font-bold px-2 py-1 rounded-full shrink-0"
-                :class="liveActivity.type === 'rebote' ? 'bg-amber-400/15 text-amber-300' : (liveActivity.type === 'sync' ? 'bg-sky-400/15 text-sky-300' : 'bg-emerald-400/15 text-emerald-300')">
+            <!-- Estado: PROCESO (Sincronizando...) -->
+            <div
+              v-if="liveActivity && liveActivity.type === 'sync'"
+              key="state-sync"
+              class="flex items-center justify-center gap-2.5 px-5 whitespace-nowrap">
+              <span class="w-3.5 h-3.5 rounded-full border-2 border-white/25 border-t-emerald-400 animate-spin shrink-0"></span>
+              <span class="text-xs font-semibold text-white tracking-tight truncate">{{ liveActivity.title }}</span>
+            </div>
+
+            <!-- Estado: EVENTO (Checada recibida en una línea) -->
+            <div
+              v-else-if="liveActivity"
+              :key="'state-evt-' + liveActivity.id"
+              class="flex items-center justify-center gap-2.5 px-5 whitespace-nowrap">
+              <span
+                class="w-2 h-2 rounded-full shrink-0"
+                :class="liveActivity.type === 'rebote' ? 'bg-amber-400' : 'bg-emerald-400'"></span>
+              <span class="text-xs font-bold text-white tracking-tight truncate max-w-[220px]">{{ liveActivity.title }}</span>
+              <span v-if="liveActivity.method" class="text-[10px] mono-code text-charcoal-300 shrink-0">· {{ liveActivity.method }}</span>
+              <span
+                v-if="liveActivity.badge"
+                class="text-[9px] mono-code font-bold px-2 py-0.5 rounded-full shrink-0"
+                :class="liveActivity.type === 'rebote' ? 'bg-amber-400/15 text-amber-300' : 'bg-emerald-400/15 text-emerald-300'">
                 {{ liveActivity.badge }}
               </span>
             </div>
 
-            <!-- Estado: TITULO (compacto / expandido) -->
-            <div v-else key="title" class="absolute inset-0 flex items-center justify-center px-8">
-              <h1 class="text-sm font-bold text-white tracking-tight whitespace-nowrap truncate">{{ title }}</h1>
+            <!-- Estado: REPOSO (Solo texto) -->
+            <div
+              v-else
+              :key="'state-idle-' + title"
+              class="flex items-center justify-center px-5 whitespace-nowrap">
+              <h1 class="text-sm font-bold text-white tracking-tight truncate">{{ title }}</h1>
             </div>
           </Transition>
-
-          <!-- Boton cerrar (solo expandido) -->
-          <button 
-            type="button"
-            @click.stop="closeIsland"
-            title="Cerrar (Esc)"
-            :tabindex="isIslandExpanded ? 0 : -1"
-            class="absolute right-2.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 text-charcoal-300 hover:text-white flex items-center justify-center text-xs transition-all duration-300 cursor-pointer"
-            :class="isIslandExpanded ? 'opacity-100 scale-100' : 'opacity-0 scale-50 pointer-events-none'">
-            <i class="ph ph-x"></i>
-          </button>
-        </div>
-
-        <!-- Barra de progreso de la actividad -->
-        <div v-if="liveActivity && liveActivity.type !== 'sync'" :key="'bar-' + liveActivity.id" class="island-progress" :class="{ 'is-bounce': liveActivity.type === 'rebote' }"><span></span></div>
-
-        <div class="island-body" :class="{ 'is-expanded': isIslandExpanded }">
-          <div class="island-body-clip">
-            <div class="island-body-content" :style="{ width: expandedWidth + 'px' }">
-              <div class="island-stagger mx-5 pt-3 pb-5 border-t border-white/10">
-
-                <!-- INICIO: selector de sucursal -->
-                <template v-if="activeModule === 'inicio'">
-                  <span class="block text-center text-[10px] mono-code text-emerald-400 font-semibold uppercase tracking-wider">Cambiar de sucursal</span>
-                  <div class="mt-3 space-y-1.5">
-                    <button
-                      v-for="b in branches"
-                      :key="b.id"
-                      type="button"
-                      @click.stop="pickBranch(b)"
-                      class="w-full flex items-center gap-3 px-3 py-2 rounded-2xl text-left transition-all duration-200 cursor-pointer active:scale-[0.98]"
-                      :class="b.id === selectedBranchId ? 'bg-white/15' : 'bg-white/5 hover:bg-white/10'">
-                      <span class="w-2 h-2 rounded-full shrink-0" :class="b.estado === 'ONLINE' ? 'bg-emerald-400' : 'bg-red-400'"></span>
-                      <span class="flex-1 min-w-0">
-                        <span class="block text-sm font-semibold text-white truncate">{{ b.nombre }}</span>
-                        <span class="block text-[10px] mono-code text-charcoal-300">{{ b.ip }} · {{ b.ubicacion }}</span>
-                      </span>
-                      <i v-if="b.id === selectedBranchId" class="ph ph-check text-emerald-400"></i>
-                    </button>
-                    <p v-if="!branches.length" class="text-xs text-charcoal-300 text-center py-2">No hay sucursales registradas.</p>
-                  </div>
-                </template>
-
-                <!-- Otros modulos: descripcion -->
-                <template v-else>
-                  <div class="text-center">
-                    <span class="inline-block text-[10px] mono-code text-emerald-400 font-semibold uppercase tracking-wider">{{ currentModuleInfo.badge }}</span>
-                  </div>
-                  <p class="text-xs text-charcoal-300 leading-relaxed mt-2 text-center">{{ currentModuleInfo.desc }}</p>
-                </template>
-
-                <!-- Estado en vivo -->
-                <div class="mt-4 grid grid-cols-2 gap-2">
-                  <div class="rounded-2xl bg-white/5 px-3 py-2">
-                    <p class="text-[9px] mono-code uppercase tracking-wider text-charcoal-400">Checadas</p>
-                    <p class="text-base font-bold mono-code text-white leading-tight">{{ liveCount }}</p>
-                  </div>
-                  <div class="rounded-2xl bg-white/5 px-3 py-2">
-                    <p class="text-[9px] mono-code uppercase tracking-wider text-charcoal-400">Reloj activo</p>
-                    <p class="text-xs font-bold text-white leading-tight truncate mt-1">{{ branchName }}</p>
-                  </div>
-                </div>
-
-                <!-- Atajos -->
-                <div class="mt-3 flex items-center justify-center gap-1.5">
-                  <button
-                    v-for="sc in shortcuts"
-                    :key="sc.id"
-                    type="button"
-                    @click.stop="goTo(sc.id)"
-                    :disabled="activeModule === sc.id"
-                    class="flex-1 flex flex-col items-center gap-1 py-2 rounded-2xl bg-white/5 hover:bg-white/12 text-charcoal-300 hover:text-white text-[10px] font-semibold transition-all duration-200 cursor-pointer active:scale-95 disabled:opacity-30 disabled:cursor-default disabled:hover:bg-white/5">
-                    <i :class="['ph', sc.icon, 'text-base']"></i>
-                    <span>{{ sc.label }}</span>
-                  </button>
-                </div>
-
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -381,7 +242,7 @@ export default {
 
           <div class="py-2 text-xs text-charcoal-700">
             <div class="px-4 py-1 text-[10px] font-bold uppercase tracking-wider text-charcoal-400">
-              Ajustes y Guías
+              Ajustes
             </div>
 
             <!-- ENLACE AL CENTRO DE CONFIGURACIÓN -->
