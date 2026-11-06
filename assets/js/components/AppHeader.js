@@ -237,76 +237,75 @@ export default {
         </div>
       </div>
 
-      <!-- RIGHT: Dynamic Actions Dropdown + Live Badge + User Avatar & Popover -->
+      <!-- RIGHT: Dynamic Actions Dropdown + User Avatar & Popover -->
       <div class="flex items-center gap-2.5 z-10 relative">
 
-        <!-- DYNAMIC MODULE ACTIONS DROPDOWN -->
+        <!-- DYNAMIC MODULE ACTIONS DROPDOWN (Estilo Claro Inicio) -->
         <div v-if="currentModule.actions && currentModule.actions.length" ref="actionsContainerRef" class="relative">
           <button
             type="button"
             @click="toggleActions"
-            class="h-9 px-3.5 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer">
-            <i class="ph ph-sliders-horizontal text-sm"></i>
+            class="h-9 px-3.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-2xs"
+            :class="isActionsOpen 
+              ? 'bg-charcoal-100 border-charcoal-300 text-charcoal-900' 
+              : 'bg-white hover:bg-charcoal-50 text-charcoal-800 border-charcoal-200'">
+            <i class="ph ph-sliders-horizontal text-sm text-charcoal-600"></i>
             <span>Acciones</span>
-            <i class="ph ph-caret-down text-[10px] transition-transform duration-150" :class="{ 'rotate-180': isActionsOpen }"></i>
+            <i class="ph ph-caret-down text-[10px] text-charcoal-500 transition-transform duration-150" :class="{ 'rotate-180': isActionsOpen }"></i>
           </button>
 
           <div
             v-if="isActionsOpen"
             class="absolute right-0 top-11 mt-1.5 w-72 bg-white rounded-2xl shadow-xl border border-charcoal-200 py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
             
-            <div class="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-charcoal-400 border-b border-charcoal-100">
-              {{ currentModule.shortLabel }} · Acciones
+            <div class="px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-charcoal-400 border-b border-charcoal-100 flex items-center justify-between">
+              <span>{{ currentModule.shortLabel }} · Acciones</span>
+              <span class="text-[9px] mono-code bg-charcoal-100 text-charcoal-600 px-1.5 py-0.5 rounded font-semibold">Módulo</span>
             </div>
 
-            <div class="py-1">
+            <div class="p-1 space-y-0.5">
               <button
                 v-for="act in currentModule.actions"
                 :key="act.id"
                 type="button"
                 @click="triggerAction(act.type)"
-                class="w-full px-4 py-2.5 text-left text-charcoal-800 hover:text-charcoal-900 hover:bg-charcoal-50 flex items-center gap-3 transition-colors cursor-pointer">
-                <i :class="['ph', act.icon, 'text-base shrink-0']" :class="{ 'animate-spin': isSyncing && act.type === 'sync-clock' }"></i>
+                class="w-full px-3 py-2 rounded-xl text-left text-charcoal-800 hover:text-charcoal-900 hover:bg-charcoal-50 flex items-center gap-3 transition-colors cursor-pointer group">
+                <div class="w-8 h-8 rounded-lg bg-charcoal-100 group-hover:bg-charcoal-200 text-charcoal-700 flex items-center justify-center shrink-0 transition-colors">
+                  <i :class="['ph', act.icon, 'text-sm']" :class="{ 'animate-spin': isSyncing && act.type === 'sync-clock' }"></i>
+                </div>
                 <div class="min-w-0 flex-1">
-                  <p class="text-xs font-bold leading-tight truncate">{{ act.label }}</p>
-                  <p v-if="act.subtitle" class="text-[10px] text-charcoal-400 truncate mt-0.5">{{ act.subtitle }}</p>
+                  <p class="text-xs font-bold leading-tight truncate text-charcoal-900">{{ act.label }}</p>
+                  <p v-if="act.subtitle" class="text-[10px] text-charcoal-500 truncate mt-0.5">{{ act.subtitle }}</p>
                 </div>
               </button>
             </div>
 
             <!-- Selector rápido de sucursal en Inicio -->
             <template v-if="activeModule === 'inicio' && branches && branches.length > 0">
-              <div class="px-4 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-charcoal-400 border-t border-charcoal-100">
-                Sucursal activa
+              <div class="px-4 pt-2.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-charcoal-400 border-t border-charcoal-100 flex items-center justify-between">
+                <span>Sucursal activa</span>
+                <span class="text-[9px] mono-code text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded font-semibold border border-emerald-200">Terminal</span>
               </div>
-              <div class="py-1">
+              <div class="p-1 space-y-0.5">
                 <button
                   v-for="b in branches"
                   :key="b.id"
                   type="button"
                   @click="pickBranch(b)"
-                  class="w-full px-4 py-2 text-left text-charcoal-800 hover:bg-charcoal-50 flex items-center gap-2.5 transition-colors cursor-pointer">
+                  class="w-full px-3 py-2 rounded-xl text-left text-charcoal-800 hover:bg-charcoal-50 flex items-center gap-2.5 transition-colors cursor-pointer"
+                  :class="{ 'bg-charcoal-50/80 font-bold': b.id === selectedBranchId }">
                   <span class="w-2 h-2 rounded-full shrink-0" :class="b.estado === 'ONLINE' ? 'bg-emerald-500' : 'bg-rose-500'"></span>
                   <div class="min-w-0 flex-1">
-                    <p class="text-xs font-semibold leading-tight truncate">{{ b.nombre }}</p>
+                    <p class="text-xs font-semibold leading-tight truncate text-charcoal-900">{{ b.nombre }}</p>
                     <p class="text-[10px] mono-code text-charcoal-400 truncate">{{ b.ip }}</p>
                   </div>
-                  <i v-if="b.id === selectedBranchId" class="ph ph-check text-xs"></i>
+                  <i v-if="b.id === selectedBranchId" class="ph ph-check text-xs text-emerald-600 font-bold"></i>
                 </button>
               </div>
             </template>
 
           </div>
         </div>
-
-        <button
-          type="button"
-          @click="$emit('navigate', 'monitor')"
-          class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-semibold transition-colors cursor-pointer"
-          title="Ir al Monitor de Checadas en Vivo">
-          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-          <span>En Vivo: <b class="mono-code">{{ liveCount }}</b> checadas</span>
-        </button>
 
         <div ref="menuContainerRef" class="relative">
           <button 
