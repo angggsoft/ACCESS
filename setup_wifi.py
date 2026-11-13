@@ -6,6 +6,7 @@ Permite desconectar el cable de red físico (Ethernet) y operar de forma inalám
 import time
 import xml.etree.ElementTree as ET
 import requests
+from typing import Optional
 from requests.auth import HTTPDigestAuth
 import config
 
@@ -32,10 +33,19 @@ def get_interface_status(if_id: int = 2):
     return None
 
 
-def configure_wifi(ssid: str = "TBS", password: str = "TBSCUAU2025", use_dhcp: bool = True):
+def configure_wifi(ssid: Optional[str] = None, password: Optional[str] = None, use_dhcp: bool = True):
     """
     Configura la interfaz inalámbrica (Interface #2) en el reloj.
+    Lee por defecto las credenciales desde variables de entorno (WIFI_SSID y WIFI_PASS vía config.py).
     """
+    ssid = ssid if ssid is not None else config.WIFI_SSID
+    password = password if password is not None else config.WIFI_PASS
+
+    if not ssid or not password:
+        print("[-] Error: SSID o Contraseña Wi-Fi no definidos.")
+        print("    Configúralos en tu archivo .env (WIFI_SSID, WIFI_PASS) o pásalos como parámetros a configure_wifi().")
+        return False
+
     url = f"{config.BASE_URL}/ISAPI/System/Network/interfaces/2"
     
     print("=" * 65)
@@ -114,7 +124,7 @@ def configure_wifi(ssid: str = "TBS", password: str = "TBSCUAU2025", use_dhcp: b
         return False
 
     # Esperar unos segundos a que la antena se asocie al punto de acceso
-    print("\n[*] Esperando a que el reloj se asocie al router Wi-Fi 'TBS'...")
+    print(f"\n[*] Esperando a que el reloj se asocie al router Wi-Fi '{ssid}'...")
     for i in range(1, 8):
         time.sleep(3)
         st = get_interface_status(2)

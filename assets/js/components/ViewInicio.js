@@ -13,6 +13,7 @@ export default {
     devices: { type: Array, default: () => [] },
     employees: { type: Array, default: () => [] },
     areas: { type: Array, default: () => [] },
+    period: { type: String, default: '14d' },
     isSyncing: { type: Boolean, default: false },
     user: { type: Object, default: () => ({ name: 'Angel Flores' }) }
   },
@@ -21,26 +22,40 @@ export default {
     const firstName = computed(() => (props.user?.name || 'Angel').split(' ')[0]);
     const hoveredIndex = ref(null);
 
+    const periodLabel = computed(() => {
+      const map = { hoy: 'Hoy', '7d': '7 días', '14d': '14 días', '30d': '30 días', mes: 'Este mes', all: 'Historial' };
+      return map[props.period] || '14 días';
+    });
+
+    const periodDaysCount = computed(() => {
+      if (props.period === '7d') return 7;
+      if (props.period === '30d') return 30;
+      return 14;
+    });
+
     const todayStr = new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD local
     const validRecords = computed(() => props.recentRecords.filter(r => !r.es_rebote));
 
     const checadasHoy = computed(() =>
-      validRecords.value.filter(r => (r.fecha_hora_display || '').startsWith(todayStr)).length
+      validRecords.value.length
     );
     const empleadosPresentes = computed(() => {
       const set = new Set(
-        validRecords.value
-          .filter(r => (r.fecha_hora_display || '').startsWith(todayStr))
-          .map(r => r.codigo_empleado)
+        validRecords.value.map(r => r.codigo_empleado)
       );
       return set.size;
     });
     const relojesOnline = computed(() => props.devices.filter(d => d.estado === 'ONLINE').length);
+    const primaryDeviceName = computed(() => {
+      if (!props.devices.length) return 'Sin reloj vinculado';
+      return props.devices[0].nombre;
+    });
 
-    // Serie: checadas válidas por día (últimos 14 días)
+    // Serie: checadas válidas por día según periodo
     const series = computed(() => {
       const days = [];
-      for (let i = 13; i >= 0; i--) {
+      const count = periodDaysCount.value;
+      for (let i = count - 1; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
         days.push(d.toLocaleDateString('sv-SE'));
@@ -132,9 +147,11 @@ export default {
 
     return {
       firstName,
+      periodLabel,
       checadasHoy,
       empleadosPresentes,
       relojesOnline,
+      primaryDeviceName,
       series,
       totalPeriodo,
       chart,
@@ -193,9 +210,9 @@ export default {
           <div class="px-6 pt-4 pb-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <div class="flex items-center gap-2">
-                <h3 class="text-sm font-bold text-charcoal-900 tracking-tight">Tráfico de asistencia</h3>
+                <h3 class="text-sm font-bold text-charcoal-900">Tráfico de asistencia</h3>
                 <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-charcoal-100 text-charcoal-700 mono-code">
-                  14 días
+                  {{ periodLabel }}
                 </span>
               </div>
               <p class="text-[11px] text-charcoal-400 mt-0.5">
@@ -204,7 +221,7 @@ export default {
             </div>
 
             <div>
-              <div v-if="hoveredIndex !== null" class="flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-sky-50 border border-sky-200 text-sky-800 text-xs font-semibold animate-in fade-in">
+              <div v-if="hoveredIndex !== null && totalPeriodo > 0" class="flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-sky-50 border border-sky-200 text-sky-800 text-xs font-semibold animate-in fade-in">
                 <span class="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse"></span>
                 <span>{{ series[hoveredIndex].day }}: <b class="mono-code font-bold">{{ series[hoveredIndex].value }} checadas</b></span>
               </div>
@@ -214,8 +231,25 @@ export default {
             </div>
           </div>
 
+          <!-- Estado Vacío de Gráfica -->
+          <div v-if="totalPeriodo === 0" class="flex-1 flex flex-col items-center justify-center p-6 text-center min-h-[190px]">
+            <i class="ph ph-chart-line-up text-4xl text-charcoal-300 mb-2.5"></i>
+            <p class="text-sm font-bold text-charcoal-800">Sin actividad registrada en el periodo ({{ periodLabel }})</p>
+            <p class="text-xs text-charcoal-400 mt-1 max-w-sm">
+              {{ devices.length === 0 ? 'Registra un reloj checador Hikvision en esta sucursal para comenzar a recibir eventos en tiempo real.' : 'Cuando los colaboradores chequen en el reloj vinculado, la curva de asistencia se actualizará automáticamente.' }}
+            </p>
+            <button
+              v-if="devices.length === 0"
+              type="button"
+              @click="$emit('navigate', 'relojes')"
+              class="mt-4 px-4 py-2 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all">
+              <i class="ph ph-plus-circle"></i>
+              <span>Registrar Reloj Checador</span>
+            </button>
+          </div>
+
           <!-- Canvas SVG maximizado de borde a borde -->
-          <div class="w-full relative px-3 sm:px-5 pb-2 select-none cursor-crosshair"
+          <div v-else class="w-full relative px-3 sm:px-5 pb-2 select-none cursor-crosshair"
                @mousemove="handleChartMouseMove"
                @mouseleave="handleChartMouseLeave">
             
@@ -308,17 +342,19 @@ export default {
           <div>
             <div class="flex items-center justify-between mb-1">
               <h3 class="text-sm font-bold text-charcoal-900">Actividad reciente</h3>
-              <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                100% ONLINE
+              <span
+                class="text-[10px] font-bold px-2 py-0.5 rounded border"
+                :class="devices.length === 0 ? 'bg-charcoal-100 text-charcoal-500 border-charcoal-200' : (relojesOnline > 0 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200')">
+                {{ devices.length === 0 ? 'SIN RELOJES' : (relojesOnline + '/' + devices.length + ' ONLINE') }}
               </span>
             </div>
             <p class="text-[11px] text-charcoal-400">
-              Frecuencia de asistencia en los últimos 14 días
+              Frecuencia de asistencia ({{ periodLabel }})
             </p>
 
             <div class="grid grid-cols-7 gap-1.5 my-3">
               <div
-                v-for="(h, i) in heat"
+                v-for="(h, i) in heat.slice(-14)"
                 :key="i"
                 :title="h.day + ': ' + h.value + ' checadas'"
                 class="aspect-square rounded-lg flex items-center justify-center transition-all hover:scale-105 cursor-pointer relative group"
@@ -334,7 +370,7 @@ export default {
               </div>
               <div class="flex justify-between text-charcoal-500">
                 <span>Terminal activa:</span>
-                <b class="text-emerald-700 font-medium">Cerro Gordo (Wi-Fi)</b>
+                <b :class="devices.length ? 'text-emerald-700 font-medium' : 'text-charcoal-400 font-medium'">{{ primaryDeviceName }}</b>
               </div>
             </div>
           </div>
@@ -369,8 +405,19 @@ export default {
           </button>
         </div>
 
+        <!-- Estado Vacío centrado vertical y horizontalmente en la tarjeta -->
+        <div v-if="!recentRecords.length" class="flex-1 flex flex-col items-center justify-center p-8 text-center">
+          <i class="ph ph-fingerprint text-4xl text-charcoal-300 mb-2.5"></i>
+          <p class="text-sm font-bold text-charcoal-800">
+            {{ devices.length === 0 ? 'Aún no hay relojes checadores registrados' : 'Sin checadas registradas en este periodo' }}
+          </p>
+          <p class="text-[11px] text-charcoal-400 mt-1 max-w-sm">
+            {{ devices.length === 0 ? 'Da de alta tu primer reloj Hikvision para generar su URL de Webhook Push.' : 'Las checadas enviadas por tu reloj aparecerán aquí en tiempo real.' }}
+          </p>
+        </div>
+
         <!-- Área de la tabla con scroll interno -->
-        <div class="flex-1 overflow-y-auto min-h-0">
+        <div v-else class="flex-1 overflow-y-auto min-h-0">
           <table class="w-full text-left border-collapse">
             <thead class="sticky top-0 z-10 bg-charcoal-50/95 backdrop-blur-sm border-b border-charcoal-100 text-[10px] font-bold uppercase tracking-wider text-charcoal-400">
               <tr>
@@ -442,12 +489,6 @@ export default {
                 </td>
               </tr>
 
-              <tr v-if="!recentRecords.length">
-                <td colspan="6" class="py-10 text-center text-xs text-charcoal-400">
-                  <i class="ph ph-fingerprint text-3xl mb-1.5 block text-charcoal-300"></i>
-                  <span>Esperando checadas del terminal Hikvision...</span>
-                </td>
-              </tr>
             </tbody>
           </table>
         </div>

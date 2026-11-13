@@ -5,13 +5,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ACCESS — Bienvenido</title>
   
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="/assets/quodo_icon.png">
+  <!-- Favicons Dinámicos / Adaptativos según el tema (Modo Claro vs Modo Oscuro) -->
+  <link id="favicon-svg" rel="icon" type="image/svg+xml" href="/assets/access.svg?v=3">
+  <link id="favicon-ico" rel="alternate icon" type="image/x-icon" href="/assets/access_dark.ico?v=3">
 
-  <!-- Google Fonts: Inter -->
+  <script>
+    // Detección y sincronización reactiva del favicon según el tema del navegador
+    (function() {
+      const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      function applyThemeFavicon(e) {
+        const isDark = e.matches;
+        const svgEl = document.getElementById('favicon-svg');
+        const icoEl = document.getElementById('favicon-ico');
+        if (svgEl) svgEl.href = isDark ? '/assets/access_white.svg?v=3' : '/assets/access.svg?v=3';
+        if (icoEl) icoEl.href = isDark ? '/assets/access_light.ico?v=3' : '/assets/access_dark.ico?v=3';
+      }
+      if (darkQuery.addEventListener) {
+        darkQuery.addEventListener('change', applyThemeFavicon);
+      } else if (darkQuery.addListener) {
+        darkQuery.addListener(applyThemeFavicon);
+      }
+      applyThemeFavicon(darkQuery);
+    })();
+  </script>
+
+  <!-- Google Fonts: Google Sans -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.cdnfonts.com/css/google-sans" rel="stylesheet">
 
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -23,7 +45,7 @@
       theme: {
         extend: {
           fontFamily: {
-            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+            sans: ['"Google Sans"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
           },
           colors: {
             coga: {
@@ -41,7 +63,7 @@
     body {
       background-color: #FAFAFA;
       color: #18181B;
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: 'Google Sans', -apple-system, BlinkMacSystemFont, sans-serif;
       -webkit-font-smoothing: antialiased;
     }
     .ph, [class^="ph-"], [class*=" ph-"] {
@@ -58,18 +80,24 @@
   <!-- MAIN CARD CONTAINER (Login) -->
   <main class="w-full max-w-[360px] bg-white rounded-3xl p-8 sm:p-9 shadow-[0_10px_35px_rgba(0,0,0,0.05)] border border-gray-100 flex flex-col items-center animate-in fade-in zoom-in-95 duration-200">
     
-    <!-- QUODO LOGO -->
+    <!-- ACCESS LOGO -->
     <div class="mb-7 mt-3 flex items-center justify-center">
-      <div class="flex items-center gap-3"><img src="/assets/quodo_label.png" alt="quodo" class="h-10 w-auto object-contain"></div>
+      <img src="/assets/access_extended.svg" alt="Access" class="h-10 w-auto object-contain">
     </div>
 
     <!-- WELCOME TITLE -->
     <h1 class="text-xl font-bold text-gray-900 mb-1 text-center tracking-tight">
       Bienvenido
     </h1>
-    <p class="text-xs text-gray-400 mb-6 text-center">
+    <p class="text-xs text-gray-400 mb-5 text-center">
       Asistencia Biométrica y Pre-Nómina ISAPI
     </p>
+
+    <!-- ALERT ERROR NOTIFICATION -->
+    <div id="loginError" class="hidden w-full mb-4 p-3.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-2xl flex items-center gap-2.5 animate-in fade-in duration-200">
+      <i class="ph ph-warning-circle text-lg shrink-0 text-rose-600"></i>
+      <span id="loginErrorMsg" class="font-medium">Usuario o contraseña incorrectos.</span>
+    </div>
 
     <!-- LOGIN FORM -->
     <form id="loginForm" onsubmit="handleLogin(event)" class="w-full space-y-4">
@@ -139,30 +167,59 @@
   </main>
 
   <!-- DISCREET DEMO SWITCHER & SYSTEM BADGE -->
-  <div class="mt-6 flex flex-col items-center gap-2 text-xs text-gray-400 max-w-[360px] text-center">
+  <div class="mt-6 flex flex-col items-center gap-2 text-xs text-gray-400 max-w-[420px] text-center">
     <div class="flex items-center gap-2 text-[11px]">
       <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-      <span>ACCESS • Terminal Hikvision Cerro Gordo (192.168.11.71)</span>
+      <span>ACCESS Cloud • Multi-Empresa & One-Way Push</span>
     </div>
     
-    <div class="flex items-center gap-2 text-[11px] text-gray-400">
-      <span>Acceso rápido:</span>
-      <button type="button" onclick="setDemo('angel.flores@quodo.mx', '123456')" class="hover:text-gray-800 underline transition-colors cursor-pointer">
-        Angel Flores (TI)
+    <div class="flex flex-wrap items-center justify-center gap-2 text-[11px] text-gray-400">
+      <span>Probar Rol:</span>
+      <button type="button" onclick="setDemo('angel.flores@quodo.mx', '123456')" class="hover:text-gray-800 underline transition-colors cursor-pointer font-semibold">
+        RH Creador (Multi-Empresa)
       </button>
       <span>•</span>
       <button type="button" onclick="setDemo('areli.martinez@quodo.mx', 'admin123')" class="hover:text-gray-800 underline transition-colors cursor-pointer">
-        Areli (Operaciones)
+        RH Invitada (Areli)
       </button>
       <span>•</span>
-      <button type="button" onclick="setDemo('carlos.mendoza@quodo.mx', 'admin123')" class="hover:text-gray-800 underline transition-colors cursor-pointer">
-        Pre-Nómina
+      <button type="button" onclick="setDemo('admin@access.com', 'admin123')" class="hover:text-gray-800 underline transition-colors cursor-pointer font-semibold text-gray-600">
+        Admin SaaS (Suscripciones)
+      </button>
+      <span>•</span>
+      <button type="button" onclick="setDemo('vencido@empresa.com', '123456')" class="hover:text-rose-600 underline transition-colors cursor-pointer">
+        Cuenta Vencida
       </button>
     </div>
   </div>
 
   <script>
+    function showError(msg) {
+      const errBox = document.getElementById('loginError');
+      const errMsg = document.getElementById('loginErrorMsg');
+      errMsg.textContent = msg || 'Credenciales incorrectas. Verifique usuario o contraseña.';
+      errBox.classList.remove('hidden');
+    }
+
+    function hideError() {
+      const errBox = document.getElementById('loginError');
+      errBox.classList.add('hidden');
+    }
+
+    function resetBtn() {
+      const btn = document.getElementById('submitBtn');
+      const btnText = document.getElementById('btnText');
+      const doorIcon = document.getElementById('doorIcon');
+      const btnSpinner = document.getElementById('btnSpinner');
+
+      btn.disabled = false;
+      btnText.textContent = "Entrar";
+      doorIcon.classList.remove('hidden');
+      btnSpinner.classList.add('hidden');
+    }
+
     function setDemo(email, pass) {
+      hideError();
       document.getElementById('emailInput').value = email;
       document.getElementById('passwordInput').value = pass;
     }
@@ -183,6 +240,7 @@
 
     async function handleLogin(e) {
       e.preventDefault();
+      hideError();
       const email = document.getElementById('emailInput').value.trim();
       const password = document.getElementById('passwordInput').value;
 
@@ -207,12 +265,14 @@
           localStorage.setItem('quodo_access_user', JSON.stringify(data.user));
           setTimeout(() => {
             window.location.href = '/dashboard';
-          }, 250);
+          }, 200);
         } else {
-          window.location.href = '/dashboard';
+          showError(data.detail || 'Credenciales incorrectas.');
+          resetBtn();
         }
       } catch (err) {
-        window.location.href = '/dashboard';
+        showError('No se pudo conectar con el servidor local.');
+        resetBtn();
       }
     }
   </script>

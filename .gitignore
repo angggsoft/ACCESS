@@ -4,8 +4,11 @@
 
 # Base de datos local
 *.db
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
+*.bak
 
 # Capturas de cámara y pruebas
 captures/

@@ -1,5 +1,5 @@
 // Component: AppSidebar
-// Collapsible navigation sidebar with ACCESS modules and nested operational action shortcuts
+// Collapsible navigation sidebar with ACCESS modules, Multi-Tenant shortcuts and Role separation
 
 export const MODULES_NAV = [
   { 
@@ -8,8 +8,9 @@ export const MODULES_NAV = [
     shortLabel: 'Inicio', 
     icon: 'ph-house',
     actions: [
-      { id: 'sync_clock_home', label: 'Sincronizar Reloj', subtitle: 'Descargar checadas y usuarios de la terminal', icon: 'ph-arrows-clockwise', type: 'sync-clock' },
-      { id: 'sync_time_home', label: 'Calibrar Hora Reloj', subtitle: 'Ajustar hora del dispositivo vía ISAPI', icon: 'ph-clock-clockwise', type: 'sync-time' }
+      { id: 'open_companies_home', label: 'Cambiar Empresa / Sucursal', subtitle: 'Alternar entre tus empresas y sedes', icon: 'ph-buildings', type: 'modal-companies' },
+      { id: 'invite_totp_home', label: 'Invitar RH (Clave 5 min)', subtitle: 'Compartir código y clave dinámica TOTP', icon: 'ph-key', type: 'modal-invite' },
+      { id: 'refresh_home', label: 'Actualizar Datos', subtitle: 'Refrescar checadas y estado del reloj', icon: 'ph-arrows-clockwise', type: 'refresh' }
     ]
   },
   { 
@@ -18,8 +19,8 @@ export const MODULES_NAV = [
     shortLabel: 'Monitor en Vivo', 
     icon: 'ph-broadcast',
     actions: [
-      { id: 'sync_now', label: 'Sincronizar Reloj (Pull)', subtitle: 'Extraer eventos de la memoria del reloj', icon: 'ph-arrows-clockwise', type: 'sync-clock' },
-      { id: 'export_csv', label: 'Exportar Bitácora (CSV)', subtitle: 'Descargar registros en formato CSV', icon: 'ph-download-simple', type: 'export-csv' }
+      { id: 'refresh_mon', label: 'Actualizar Monitor', subtitle: 'Consultar últimas checadas recibidas', icon: 'ph-arrows-clockwise', type: 'refresh' },
+      { id: 'export_csv', label: 'Exportar Bitácora (CSV)', subtitle: 'Descargar registros de la sucursal', icon: 'ph-download-simple', type: 'export-csv' }
     ]
   },
   { 
@@ -28,9 +29,8 @@ export const MODULES_NAV = [
     shortLabel: 'Relojes Checadores', 
     icon: 'ph-fingerprint',
     actions: [
-      { id: 'add_clock', label: 'Agregar Reloj Checador', subtitle: 'Registrar nueva terminal Hikvision ISAPI', icon: 'ph-plus-circle', type: 'modal-clock' },
-      { id: 'sync_clock_dev', label: 'Sincronizar Reloj Activo', subtitle: 'Extraer eventos y censo de usuarios', icon: 'ph-arrows-clockwise', type: 'sync-clock' },
-      { id: 'sync_time', label: 'Calibrar Hora Reloj', subtitle: 'Sincronizar hora del servidor al reloj', icon: 'ph-clock-clockwise', type: 'sync-time' }
+      { id: 'add_clock', label: 'Registrar Reloj en Sucursal', subtitle: 'Generar token Push único para reloj Hikvision', icon: 'ph-plus-circle', type: 'modal-clock' },
+      { id: 'refresh_dev', label: 'Actualizar Estado', subtitle: 'Verificar último contacto del reloj', icon: 'ph-arrows-clockwise', type: 'refresh' }
     ]
   },
   { 
@@ -39,8 +39,7 @@ export const MODULES_NAV = [
     shortLabel: 'Empleados y Biometría', 
     icon: 'ph-users-three',
     actions: [
-      { id: 'new_emp', label: 'Nuevo Empleado (Alta ISAPI)', subtitle: 'Registrar colaborador y enviarlo al reloj', icon: 'ph-user-plus', type: 'modal-employee' },
-      { id: 'sync_emp', label: 'Importar Usuarios del Reloj', subtitle: 'Sincronizar censo desde la terminal', icon: 'ph-arrows-clockwise', type: 'sync-clock' }
+      { id: 'new_emp', label: 'Registrar / Asignar Empleado', subtitle: 'Vincular ID del reloj con Área y Turno', icon: 'ph-user-plus', type: 'modal-employee' }
     ]
   },
   { 
@@ -69,9 +68,18 @@ export const MODULES_NAV = [
     shortLabel: 'Configuración', 
     icon: 'ph-gear',
     actions: [
-      { id: 'test_conn', label: 'Probar Conexión Reloj', subtitle: 'Verificar enlace HTTP Digest ISAPI', icon: 'ph-plugs-connected', type: 'test-clock-conn' },
-      { id: 'sync_time_cfg', label: 'Calibrar Hora Reloj', subtitle: 'Sincronizar hora del servidor al reloj', icon: 'ph-clock-clockwise', type: 'sync-time' }
+      { id: 'open_companies_cfg', label: 'Empresas e Invitaciones', subtitle: 'Gestionar empresas, sucursales y clave 5 min', icon: 'ph-buildings', type: 'modal-companies' }
     ]
+  }
+];
+
+export const ADMIN_MODULES_NAV = [
+  {
+    id: 'admin_saas',
+    title: 'Suscripciones y Clientes RH',
+    shortLabel: 'Clientes y Suscripciones',
+    icon: 'ph-shield-check',
+    actions: []
   }
 ];
 
@@ -80,8 +88,10 @@ export default {
   props: {
     activeModule: { type: String, default: 'inicio' },
     isCollapsed: { type: Boolean, default: false },
-    branchName: { type: String, default: 'Cerro Gordo' },
-    branchSubtitle: { type: String, default: '192.168.11.71 • Wi-Fi TBS' }
+    isAdminSaas: { type: Boolean, default: false },
+    companyName: { type: String, default: 'Quodo S.A. de C.V.' },
+    branchName: { type: String, default: 'Planta Cerro Gordo' },
+    branchSubtitle: { type: String, default: 'One-Way Push' }
   },
   emits: ['select-module', 'quick-action'],
   setup(props, { emit }) {
@@ -94,7 +104,8 @@ export default {
     }
 
     return {
-      modules: MODULES_NAV,
+      rhModules: MODULES_NAV,
+      adminModules: ADMIN_MODULES_NAV,
       select,
       executeSubAction
     };
@@ -107,10 +118,10 @@ export default {
       <div class="p-2 space-y-1 overflow-y-auto overflow-x-hidden flex-1">
         
         <div v-show="!isCollapsed" class="px-3.5 py-2 text-[10px] font-bold text-charcoal-400 uppercase tracking-wider">
-          Módulos ACCESS
+          {{ isAdminSaas ? 'Consola SaaS' : 'Módulos ACCESS' }}
         </div>
 
-        <div v-for="m in modules" :key="m.id" class="space-y-0.5">
+        <div v-for="m in (isAdminSaas ? adminModules : rhModules)" :key="m.id" class="space-y-0.5">
           
           <button 
             type="button" 
@@ -149,6 +160,24 @@ export default {
 
         </div>
 
+      </div>
+
+      <!-- FOOTER DE SEDE ACTIVA EN SIDEBAR (SOLO RH) -->
+      <div v-if="!isAdminSaas && !isCollapsed" class="p-3 border-t border-charcoal-100">
+        <button
+          type="button"
+          @click="$emit('quick-action', 'modal-companies')"
+          class="w-full p-2.5 rounded-2xl bg-offwhite hover:bg-charcoal-100 border border-charcoal-200 text-left transition-all cursor-pointer group">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-charcoal-400">Empresa / Sucursal</span>
+            <i class="ph ph-caret-up-down text-xs text-charcoal-400 group-hover:text-charcoal-900"></i>
+          </div>
+          <p class="text-xs font-bold text-charcoal-900 truncate mt-0.5">{{ companyName }}</p>
+          <p class="text-[11px] text-emerald-700 font-semibold truncate flex items-center gap-1 mt-0.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>{{ branchName }}</span>
+          </p>
+        </button>
       </div>
 
     </aside>

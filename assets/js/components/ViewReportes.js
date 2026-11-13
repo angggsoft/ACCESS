@@ -12,7 +12,9 @@ export default {
     employees: { type: Array, default: () => [] },
     devices: { type: Array, default: () => [] },
     areas: { type: Array, default: () => [] },
-    summary: { type: Object, default: () => ({}) }
+    summary: { type: Object, default: () => ({}) },
+    empresaId: { type: [Number, String, null], default: null },
+    sucursalId: { type: [Number, String, null], default: null }
   },
   emits: ['toast'],
   setup(props, { emit }) {
@@ -138,6 +140,8 @@ export default {
           reloj: filterReloj.value,
           status: filterStatus.value
         });
+        if (props.empresaId) params.set('empresa_id', props.empresaId);
+        if (props.sucursalId) params.set('sucursal_id', props.sucursalId);
         const res = await fetch(`/api/reports/query?${params.toString()}`);
         if (!res.ok) return;
         const json = await res.json();
@@ -300,12 +304,13 @@ export default {
             `"${(r.nombre || '').replace(/"/g, '""')}"`,
             `"${(r.area_nombre || '').replace(/"/g, '""')}"`,
             `"${(r.turno || '').replace(/"/g, '""')}"`,
+            r.dias_asistidos ?? r.dias_activos,
+            r.retardos ?? 0,
+            r.dias_incompletos ?? 0,
+            r.horas_trabajadas ?? 0,
             r.total_validas,
             r.total_rebotes,
-            r.dias_activos,
-            r.primera_checada,
-            r.ultima_checada,
-            r.estatus
+            `"${(r.estatus || '').replace(/"/g, '""')}"`
           ]);
         });
       } else if (activeReportType.value === 'bitacora') {
@@ -375,7 +380,7 @@ export default {
       updateDatePreset('mes');
     }
 
-    watch([activeReportType, filterEmployee, filterReloj, filterArea, filterStatus], () => {
+    watch([activeReportType, filterEmployee, filterReloj, filterArea, filterStatus, () => props.empresaId, () => props.sucursalId], () => {
       fetchReport();
     });
 
@@ -601,13 +606,13 @@ export default {
                 <th class="py-3 px-5">ID</th>
                 <th class="py-3 px-4">Colaborador</th>
                 <th class="py-3 px-4">Área / Turno</th>
+                <th class="py-3 px-3 text-center">Días Asist.</th>
+                <th class="py-3 px-3 text-center">Retardos</th>
+                <th class="py-3 px-3 text-center">Incompletos</th>
+                <th class="py-3 px-3 text-center">Horas Trab.</th>
                 <th class="py-3 px-3 text-center">Válidas</th>
                 <th class="py-3 px-3 text-center">Rebotes</th>
-                <th class="py-3 px-3 text-center">Días</th>
-                <th class="py-3 px-4">Primera Checada</th>
-                <th class="py-3 px-4">Última Checada</th>
-                <th class="py-3 px-4">Reloj / Método</th>
-                <th class="py-3 px-5 text-right">Estatus</th>
+                <th class="py-3 px-5 text-right">Estatus Pre-Nómina</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-charcoal-100 text-xs">
@@ -621,27 +626,32 @@ export default {
                   <div class="font-medium text-charcoal-800">{{ row.area_nombre }}</div>
                   <div class="text-[10px] text-charcoal-400">{{ row.turno }}</div>
                 </td>
-                <td class="py-3.5 px-3 text-center mono-code font-bold text-emerald-700 bg-emerald-50/30">
-                  {{ row.total_validas }}
+                <td class="py-3.5 px-3 text-center mono-code font-bold text-charcoal-900 bg-charcoal-50/50">
+                  {{ row.dias_asistidos ?? row.dias_activos ?? 0 }}
                 </td>
-                <td class="py-3.5 px-3 text-center mono-code font-semibold text-amber-700">
-                  {{ row.total_rebotes }}
+                <td class="py-3.5 px-3 text-center mono-code font-bold" :class="(row.retardos > 0) ? 'text-rose-600 bg-rose-50/30' : 'text-charcoal-400'">
+                  {{ row.retardos || 0 }}
                 </td>
-                <td class="py-3.5 px-3 text-center mono-code font-bold text-charcoal-800">
-                  {{ row.dias_activos }}
+                <td class="py-3.5 px-3 text-center mono-code font-bold" :class="(row.dias_incompletos > 0) ? 'text-amber-600 bg-amber-50/30' : 'text-charcoal-400'">
+                  {{ row.dias_incompletos || 0 }}
                 </td>
-                <td class="py-3.5 px-4 mono-code text-[11px] text-charcoal-700">
-                  {{ row.primera_checada }}
+                <td class="py-3.5 px-3 text-center mono-code font-bold text-indigo-700 bg-indigo-50/20">
+                  {{ row.horas_trabajadas || 0 }}h
                 </td>
-                <td class="py-3.5 px-4 mono-code text-[11px] text-charcoal-700">
-                  {{ row.ultima_checada }}
+                <td class="py-3.5 px-3 text-center mono-code font-bold text-emerald-700">
+                  {{ row.total_validas || 0 }}
                 </td>
-                <td class="py-3.5 px-4 text-[11px]">
-                  <span class="font-bold text-charcoal-800">{{ row.reloj_preferido }}</span>
-                  <span class="text-charcoal-400 ml-1">({{ row.metodo_preferido }})</span>
+                <td class="py-3.5 px-3 text-center mono-code font-semibold text-charcoal-400">
+                  {{ row.total_rebotes || 0 }}
                 </td>
                 <td class="py-3.5 px-5 text-right">
-                  <span v-if="row.total_validas > 0" class="px-3 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                  <span v-if="row.total_validas > 0" class="px-3 py-1 rounded-full text-[10px] font-bold"
+                    :class="{
+                      'bg-emerald-50 text-emerald-800 border border-emerald-200': row.estatus === 'ASISTENCIA PUNTUAL',
+                      'bg-rose-50 text-rose-800 border border-rose-200': row.estatus && row.estatus.includes('RETARDO'),
+                      'bg-amber-50 text-amber-800 border border-amber-200': row.estatus && row.estatus.includes('INCOMPLETO') && !row.estatus.includes('RETARDO'),
+                      'bg-charcoal-100 text-charcoal-800 border border-charcoal-200': !row.estatus || row.estatus === 'SIN REGISTROS'
+                    }">
                     {{ row.estatus }}
                   </span>
                   <span v-else class="px-3 py-1 rounded-full text-[10px] font-bold bg-charcoal-100 text-charcoal-500 border border-charcoal-200">

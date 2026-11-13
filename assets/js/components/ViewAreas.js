@@ -1,5 +1,5 @@
 // Component: ViewAreas
-// Gestión de Áreas, Departamentos, Horarios y Tolerancias para Pre-Nómina
+// Gestión de Áreas, Departamentos, Horarios y Tolerancias por Sucursal para Pre-Nómina
 
 import { ref } from 'vue';
 import ModalBase from './ModalBase.js';
@@ -8,30 +8,34 @@ export default {
   name: 'ViewAreas',
   components: { ModalBase },
   props: {
-    areas: { type: Array, default: () => [] }
+    areas: { type: Array, default: () => [] },
+    empresaId: { type: [Number, String, null], default: 1 },
+    sucursalId: { type: [Number, String, null], default: 1 }
   },
   emits: ['refresh', 'toast'],
   setup(props, { emit }) {
     const isModalOpen = ref(false);
     const form = ref({
+      id: null,
       codigo: '',
       nombre: '',
       responsable: '',
       turno: 'Matutino Operativo',
       horario: '08:00 - 17:00',
       tolerancia_min: 10,
-      ubicacion: 'Planta Cerro Gordo'
+      ubicacion: 'Sucursal Activa'
     });
 
     function openNewArea() {
       form.value = {
+        id: null,
         codigo: `AREA-0${props.areas.length + 1}`,
         nombre: '',
         responsable: '',
         turno: 'Matutino',
         horario: '08:00 - 17:00',
         tolerancia_min: 10,
-        ubicacion: 'Planta Cerro Gordo'
+        ubicacion: 'Sucursal Activa'
       };
       isModalOpen.value = true;
     }
@@ -50,7 +54,11 @@ export default {
         const res = await fetch('/api/areas', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(form.value)
+          body: JSON.stringify({
+            ...form.value,
+            empresa_id: props.empresaId,
+            sucursal_id: props.sucursalId
+          })
         });
         const data = await res.json();
         if (res.ok) {
@@ -82,10 +90,26 @@ export default {
     };
   },
   template: `
-    <div class="w-full space-y-6 animate-in fade-in duration-150">
+    <div class="w-full flex-1 flex flex-col space-y-6 animate-in fade-in duration-150">
+
+      <!-- ESTADO VACÍO: SIN ÁREAS -->
+      <div v-if="!areas.length" class="flex-1 bg-white rounded-3xl p-10 border border-charcoal-200 shadow-sm text-center flex flex-col items-center justify-center min-h-[320px]">
+        <i class="ph ph-buildings text-5xl text-charcoal-300 mb-3"></i>
+        <h3 class="text-base font-bold text-charcoal-900">Aún no hay áreas o turnos configurados</h3>
+        <p class="text-xs text-charcoal-500 mt-1.5 max-w-md leading-relaxed">
+          Crea las áreas operativas con su horario de entrada y tolerancia en minutos para calcular los retardos de pre-nómina.
+        </p>
+        <button
+          type="button"
+          @click="openNewArea"
+          class="mt-5 px-5 py-2.5 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-2 cursor-pointer transition-all shadow-xs">
+          <i class="ph ph-plus-circle text-base"></i>
+          <span>Crear Primera Área</span>
+        </button>
+      </div>
 
       <!-- AREAS CARDS GRID -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div
           v-for="a in areas"
           :key="a.id"
@@ -149,7 +173,7 @@ export default {
       <!-- MODAL: NUEVA / EDITAR ÁREA -->
       <ModalBase
         v-if="isModalOpen"
-        title="Configurar Área y Horario Operativo"
+        title="Configurar Área y Horario Operativo en Sucursal"
         confirmLabel="Guardar Área"
         size="md"
         @close="isModalOpen = false"
