@@ -22,6 +22,7 @@ export default {
     const isSaving = ref(false);
     const empForm = ref({
       codigo_empleado: '',
+      codigo_contpaqi: '',
       nombre: '',
       area_nombre: 'General',
       puesto: 'Colaborador',
@@ -39,6 +40,7 @@ export default {
           return (
             (e.nombre || '').toLowerCase().includes(q) ||
             String(e.codigo_empleado || '').includes(q) ||
+            String(e.codigo_contpaqi || '').toLowerCase().includes(q) ||
             (e.puesto || '').toLowerCase().includes(q)
           );
         }
@@ -46,27 +48,11 @@ export default {
       });
     });
 
-    function openNewEmployee() {
-      const nextId = props.employees.length
-        ? Math.max(...props.employees.map(x => parseInt(x.codigo_empleado, 10) || 0)) + 1
-        : 1;
-      empForm.value = {
-        codigo_empleado: String(nextId),
-        nombre: '',
-        area_nombre: props.areas[0]?.nombre || 'General',
-        puesto: 'Colaborador',
-        turno: 'Matutino (08:00 - 17:00)',
-        pin: '',
-        tiene_huella: true,
-        tiene_rostro: true
-      };
-      isEmpModalOpen.value = true;
-    }
-
     function openEditEmployee(emp) {
       empForm.value = {
         codigo_empleado: String(emp.codigo_empleado),
-        nombre: emp.nombre,
+        codigo_contpaqi: emp.codigo_contpaqi || '',
+        nombre: emp.sin_nombre ? '' : (emp.nombre || ''),
         area_nombre: emp.area_nombre || props.areas[0]?.nombre || 'General',
         puesto: emp.puesto || 'Colaborador',
         turno: emp.turno || 'Matutino (08:00 - 17:00)',
@@ -77,11 +63,32 @@ export default {
       isEmpModalOpen.value = true;
     }
 
+    function openEditByCode(empNo) {
+      const target = props.employees.find(e => String(e.codigo_empleado) === String(empNo));
+      if (target) {
+        openEditEmployee(target);
+      } else {
+        empForm.value = {
+          codigo_empleado: String(empNo),
+          codigo_contpaqi: '',
+          nombre: '',
+          area_nombre: props.areas[0]?.nombre || 'General',
+          puesto: 'Colaborador',
+          turno: 'Matutino (08:00 - 17:00)',
+          pin: '',
+          tiene_huella: false,
+          tiene_rostro: false
+        };
+        isEmpModalOpen.value = true;
+      }
+    }
+
     async function saveEmployee() {
-      if (!empForm.value.codigo_empleado || !empForm.value.nombre) {
-        emit('toast', 'ID de reloj y Nombre del colaborador son obligatorios', 'error');
+      if (!empForm.value.codigo_empleado) {
+        emit('toast', 'El ID de reloj es obligatorio', 'error');
         return;
       }
+      const finalName = (empForm.value.nombre || '').trim() || `Empleado #${empForm.value.codigo_empleado}`;
       isSaving.value = true;
       try {
         const res = await fetch('/api/employees', {
@@ -89,6 +96,7 @@ export default {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ...empForm.value,
+            nombre: finalName,
             empresa_id: props.empresaId,
             sucursal_id: props.sucursalId
           })
@@ -115,8 +123,8 @@ export default {
       isEmpModalOpen,
       isSaving,
       empForm,
-      openNewEmployee,
       openEditEmployee,
+      openEditByCode,
       saveEmployee
     };
   },
@@ -124,7 +132,7 @@ export default {
     <div class="w-full flex-1 flex flex-col space-y-5 animate-in fade-in duration-150">
 
       <!-- FILTERS & INFO -->
-      <div class="bg-white rounded-3xl p-4 border border-charcoal-200 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+      <div class="bg-white rounded-3xl p-4 border border-charcoal-200 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div class="relative flex-1 max-w-md">
           <i class="ph ph-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-charcoal-400"></i>
           <input
@@ -140,14 +148,6 @@ export default {
             <option value="all">Todas las Áreas</option>
             <option v-for="a in areas" :key="a.id" :value="a.nombre">{{ a.nombre }}</option>
           </select>
-
-          <button
-            type="button"
-            @click="openNewEmployee"
-            class="px-4 py-2 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer">
-            <i class="ph ph-user-plus"></i>
-            <span>Registrar Colaborador</span>
-          </button>
         </div>
       </div>
 
@@ -159,7 +159,7 @@ export default {
             {{ employees.length === 0 ? 'Sin colaboradores registrados en esta sucursal' : 'No hay colaboradores que coincidan con el filtro' }}
           </p>
           <p class="text-[11px] text-charcoal-400 mt-1 max-w-sm">
-            {{ employees.length === 0 ? 'Registra un colaborador manualmente o espera a que chequen en el reloj para auto-descubrirlos.' : 'Prueba ajustando el texto de búsqueda o el área seleccionada.' }}
+            {{ employees.length === 0 ? 'Los colaboradores se registrarán automáticamente como "Empleado #ID" al realizar su primera checada en el reloj físico.' : 'Prueba ajustando el texto de búsqueda o el área seleccionada.' }}
           </p>
         </div>
 
@@ -178,14 +178,26 @@ export default {
             </thead>
             <tbody class="divide-y divide-charcoal-100 text-xs">
               <tr v-for="emp in filteredEmployees" :key="emp.codigo_empleado" class="hover:bg-charcoal-50/70 transition-colors">
-                <td class="py-4 px-6 mono-code font-black text-sm text-charcoal-900">#{{ emp.codigo_empleado }}</td>
+                <td class="py-4 px-6 mono-code font-black text-sm text-charcoal-900">
+                  <div>#{{ emp.codigo_empleado }}</div>
+                  <div v-if="emp.codigo_contpaqi" class="text-[10px] font-medium text-charcoal-400 mt-0.5">
+                    CONTPAQi: {{ emp.codigo_contpaqi }}
+                  </div>
+                </td>
                 <td class="py-4 px-4">
                   <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 rounded-full bg-[#18181B] text-white flex items-center justify-center text-xs font-bold shrink-0">
+                    <div class="w-9 h-9 rounded-full bg-charcoal-100 text-charcoal-700 flex items-center justify-center text-xs font-bold shrink-0">
                       {{ (emp.nombre || 'E').slice(0, 2).toUpperCase() }}
                     </div>
                     <div>
-                      <div class="font-bold text-charcoal-900 text-sm">{{ emp.nombre }}</div>
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span class="font-bold text-charcoal-900 text-sm">{{ emp.nombre }}</span>
+                        <span
+                          v-if="emp.sin_nombre"
+                          class="text-[11px] font-medium text-charcoal-400">
+                          Sin nombre asignado
+                        </span>
+                      </div>
                       <div class="text-[11px] text-charcoal-500">{{ emp.puesto }}</div>
                     </div>
                   </div>
@@ -195,23 +207,23 @@ export default {
                   <div class="text-[11px] text-charcoal-400">{{ emp.turno }}</div>
                 </td>
                 <td class="py-4 px-4">
-                  <span v-if="emp.tiene_huella" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <span v-if="emp.tiene_huella" class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-charcoal-900">
                     <i class="ph ph-fingerprint text-sm"></i> ACTIVA EN RELOJ
                   </span>
-                  <span v-else class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-charcoal-100 text-charcoal-500 border border-charcoal-200">
+                  <span v-else class="inline-flex items-center gap-1.5 text-[11px] font-medium text-charcoal-400">
                     SIN REGISTRO
                   </span>
                 </td>
                 <td class="py-4 px-4">
-                  <span v-if="emp.tiene_rostro" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  <span v-if="emp.tiene_rostro" class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-charcoal-900">
                     <i class="ph ph-scan-smiley text-sm"></i> ACTIVO EN RELOJ
                   </span>
-                  <span v-else class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-charcoal-100 text-charcoal-500 border border-charcoal-200">
+                  <span v-else class="inline-flex items-center gap-1.5 text-[11px] font-medium text-charcoal-400">
                     SIN REGISTRO
                   </span>
                 </td>
                 <td class="py-4 px-4">
-                  <span class="mono-code text-[11px] px-2.5 py-1 rounded-xl bg-charcoal-100 text-charcoal-800 font-semibold">
+                  <span class="mono-code text-[11px] text-charcoal-600 font-medium">
                     {{ emp.reloj_asignado || 'Sucursal Activa' }}
                   </span>
                 </td>
@@ -220,7 +232,7 @@ export default {
                     type="button"
                     @click="openEditEmployee(emp)"
                     class="px-3.5 py-1.5 rounded-full bg-[#18181B] hover:bg-black text-white text-[11px] font-semibold transition-colors cursor-pointer">
-                    <i class="ph ph-pencil-simple"></i> Asignar Área / Turno
+                    <i class="ph ph-pencil-simple"></i> Editar Datos / Nombre
                   </button>
                 </td>
               </tr>
@@ -247,12 +259,12 @@ export default {
           <div class="grid grid-cols-3 gap-3">
             <div>
               <label class="block font-bold text-charcoal-800 mb-1">ID en Reloj Físico</label>
-              <input v-model="empForm.codigo_empleado" type="text" placeholder="Ej: 4"
-                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 mono-code font-bold focus:outline-none focus:ring-2 focus:ring-charcoal-900">
+              <input v-model="empForm.codigo_empleado" type="text" readonly
+                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 mono-code font-bold bg-charcoal-100 text-charcoal-500 cursor-not-allowed focus:outline-none">
             </div>
             <div class="col-span-2">
-              <label class="block font-bold text-charcoal-800 mb-1">Nombre Completo</label>
-              <input v-model="empForm.nombre" type="text" placeholder="Ej: Angel Flores"
+              <label class="block font-bold text-charcoal-800 mb-1">Nombre Completo (Opcional — por defecto "Empleado #ID")</label>
+              <input v-model="empForm.nombre" type="text" :placeholder="'Empleado #' + empForm.codigo_empleado"
                 class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 focus:outline-none focus:ring-2 focus:ring-charcoal-900">
             </div>
           </div>
@@ -271,10 +283,18 @@ export default {
             </div>
           </div>
 
-          <div>
-            <label class="block font-bold text-charcoal-800 mb-1">Turno Asignado</label>
-            <input v-model="empForm.turno" type="text" placeholder="Matutino (08:00 - 17:00)"
-              class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block font-bold text-charcoal-800 mb-1">Turno Asignado</label>
+              <input v-model="empForm.turno" type="text" placeholder="Matutino (08:00 - 17:00)"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200">
+            </div>
+            <div>
+              <label class="block font-bold text-charcoal-800 mb-1">Código CONTPAQi Nóminas</label>
+              <input v-model="empForm.codigo_contpaqi" type="text" maxlength="7" :placeholder="'Por defecto usa ' + empForm.codigo_empleado"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 mono-code font-semibold">
+              <span class="text-[10px] text-charcoal-400 block mt-1">Si se deja vacío, se exportará su ID biométrico (#{{ empForm.codigo_empleado }}).</span>
+            </div>
           </div>
         </div>
       </ModalBase>

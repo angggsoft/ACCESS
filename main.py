@@ -16,7 +16,7 @@ from typing import Dict, Any, Optional
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response, Depends, HTTPException, Body, status
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -35,6 +35,14 @@ CAPTURES_DIR = BASE_DIR / "captures"
 CAPTURES_DIR.mkdir(exist_ok=True)
 
 VALID_SUB_EVENT_TYPES = {75, 104, 38, 1, 9, 181}
+ZK_VERIFY_TO_SUB_EVENT = {
+    1: 38,   # Huella
+    15: 75,  # Rostro
+    2: 1,    # Tarjeta / Badge
+    4: 1,    # Tarjeta RFID
+    0: 9,    # PIN / Password
+    3: 9     # PIN / Password
+}
 
 
 def safe_int(val) -> int:
@@ -99,8 +107,11 @@ app.add_middleware(
 
 @app.middleware("http")
 async def no_cache_Dynamic(request: Request, call_next):
-    response = await call_next(request)
     path = request.url.path
+    response = await call_next(request)
+    if path.startswith("/iclock"):
+        response.headers["Cache-Control"] = "no-cache"
+        return response
     if path.startswith("/assets/js/") or path in ["/dashboard", "/login", "/"]:
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
     return response
@@ -271,13 +282,17 @@ async def api_admin_list_users(admin_user: Dict[str, Any] = Depends(require_saas
     activas = sum(1 for u in users if u["subscription"].get("is_active"))
     vencidas = sum(1 for u in users if u["subscription"].get("estado") == "VENCIDA")
     suspendidas = sum(1 for u in users if u["subscription"].get("estado") == "SUSPENDIDA")
+    total_relojes_contratados = sum(u["subscription"].get("max_relojes", 0) for u in users)
+    total_relojes_activos = sum(u.get("relojes_vinculados_count", 0) for u in users)
     return {
         "status": "success",
         "kpis": {
             "total_usuarios_rh": total_users,
             "suscripciones_activas": activas,
             "suscripciones_vencidas": vencidas,
-            "suscripciones_suspendidas": suspendidas
+            "suscripciones_suspendidas": suspendidas,
+            "total_relojes_contratados": total_relojes_contratados,
+            "total_relojes_activos": total_relojes_activos
         },
         "users": users
     }
@@ -304,6 +319,17 @@ async def api_admin_update_subscription(
     if not res.get("ok"):
         raise HTTPException(status_code=400, detail=res.get("error", "No se pudo actualizar la suscripción."))
     return {"status": "success", "message": "Suscripción y permisos actualizados correctamente."}
+
+
+@app.delete("/api/admin/users/{target_user_id}")
+async def api_admin_delete_user(
+    target_user_id: int,
+    admin_user: Dict[str, Any] = Depends(require_saas_admin)
+):
+    res = db.admin_delete_rh_user(target_user_id)
+    if not res.get("ok"):
+        raise HTTPException(status_code=404, detail=res.get("error", "Usuario RH no encontrado."))
+    return {"status": "success", "message": "Cuenta de usuario RH eliminada correctamente."}
 
 
 # ==========================================
@@ -401,6 +427,23 @@ async def api_join_company(
         "already_member": res.get("already_member", False),
         "companies": db.get_user_companies(user["id"]),
         "message": f"Te has vinculado exitosamente a la empresa '{res['nombre']}'."
+    }
+
+
+@app.delete("/api/companies/{empresa_id}/members/{member_user_id}")
+async def api_remove_company_member(
+    empresa_id: int,
+    member_user_id: int,
+    user: Dict[str, Any] = Depends(require_rh_active)
+):
+    """Revoca el acceso de un miembro RH de la empresa (solo creador/OWNER)."""
+    res = db.remove_company_member(user["id"], empresa_id, member_user_id)
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("error"))
+    return {
+        "status": "success",
+        "companies": db.get_user_companies(user["id"]),
+        "message": "Acceso del miembro revocado correctamente."
     }
 
 
@@ -531,7 +574,8 @@ async def receive_hikvision_webhook(request: Request, webhook_token: Optional[st
     if not emp_no:
         return JSONResponse(status_code=status.HTTP_200_OK, content={"status": "success", "note": "no_employee"})
 
-    nombre = event_data.get("name", "Colaborador")
+    raw_name = (event_data.get("name") or "").strip()
+    nombre = raw_name if raw_name else f"Empleado #{emp_no}"
     dt_str = event_data.get("dateTime") or event_data.get("time") or datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S-06:00")
     serial_no = safe_int(event_data.get("serialNo")) or None
 
@@ -549,6 +593,97 @@ async def receive_hikvision_webhook(request: Request, webhook_token: Optional[st
     )
 
     return JSONResponse(status_code=status.HTTP_200_OK, content={"status": "success", "inserted": result.get("inserted", False)})
+
+
+# ==========================================
+# PROTOCOLO ZKTECO ADMS / PUSH SDK (/iclock)
+# ==========================================
+
+@app.get("/iclock/cdata", response_class=PlainTextResponse)
+async def zkteco_adms_handshake(request: Request):
+    """Handshake inicial y heartbeat GET /iclock/cdata?SN=...&options=all"""
+    sn = (request.query_params.get("SN") or "").strip()
+    if sn:
+        clock = db.get_clock_by_serial(sn)
+        if clock:
+            db.touch_clock_heartbeat(clock["id"])
+    return PlainTextResponse("OK")
+
+
+@app.post("/iclock/cdata", response_class=PlainTextResponse)
+async def zkteco_adms_receive_data(request: Request):
+    """Recepción de checadas ZKTeco ADMS (table=ATTLOG separado por tabuladores)."""
+    sn = (request.query_params.get("SN") or "").strip()
+    table = (request.query_params.get("table") or "").strip().upper()
+    clock = db.get_clock_by_serial(sn) if sn else None
+    if not clock:
+        return PlainTextResponse("OK: 0", status_code=404)
+
+    db.touch_clock_heartbeat(clock["id"])
+    if table != "ATTLOG":
+        return PlainTextResponse("OK")
+
+    raw_bytes = await request.body()
+    raw_body = raw_bytes.decode("utf-8", errors="ignore")
+    count = 0
+
+    for raw_line in raw_body.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.split("\t")]
+        if len(parts) < 2 or not parts[0]:
+            continue
+
+        emp_no = parts[0]
+        ts_raw = parts[1]
+        if "T" in ts_raw:
+            dt_iso = ts_raw if ("-" in ts_raw[10:] or "+" in ts_raw[10:] or ts_raw.endswith("Z")) else f"{ts_raw}-06:00"
+        elif " " in ts_raw:
+            dt_iso = f"{ts_raw.replace(' ', 'T', 1)}-06:00"
+        else:
+            dt_iso = ts_raw or datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S-06:00")
+
+        verify_code = safe_int(parts[3]) if len(parts) > 3 and parts[3] != "" else 1
+        sub_type = ZK_VERIFY_TO_SUB_EVENT.get(verify_code, 38)
+
+        db.record_checkin(
+            serial_no=None,
+            emp_no=emp_no,
+            nombre=f"Empleado #{emp_no}",
+            tipo_evento="ZKTecoADMS",
+            sub_event_type=sub_type,
+            fecha_hora=dt_iso,
+            reloj_nombre=clock["nombre"],
+            empresa_id=clock["empresa_id"],
+            sucursal_id=clock["sucursal_id"],
+            reloj_id=clock["id"]
+        )
+        count += 1
+
+    return PlainTextResponse(f"OK: {count}")
+
+
+@app.get("/iclock/getrequest", response_class=PlainTextResponse)
+async def zkteco_adms_getrequest(request: Request):
+    """Polling periódico del reloj ZKTeco para mantener estado ONLINE."""
+    sn = (request.query_params.get("SN") or "").strip()
+    if sn:
+        clock = db.get_clock_by_serial(sn)
+        if clock:
+            db.touch_clock_heartbeat(clock["id"])
+    return PlainTextResponse("OK")
+
+
+@app.post("/iclock/devicecmd", response_class=PlainTextResponse)
+async def zkteco_adms_devicecmd(request: Request):
+    """Confirmación de comandos de terminal ZKTeco."""
+    sn = (request.query_params.get("SN") or "").strip()
+    if sn:
+        clock = db.get_clock_by_serial(sn)
+        if clock:
+            db.touch_clock_heartbeat(clock["id"])
+    return PlainTextResponse("OK")
 
 
 @app.post("/api/devices/{device_id}/simulate-push")
@@ -616,11 +751,17 @@ async def api_simulate_clock_push(
 def _enrich_reloj(r: Any, request: Optional[Request] = None) -> Dict[str, Any]:
     d = dict(r)
     base_srv = get_server_base_url(request)
+    marca = (d.get("marca") or "HIKVISION").strip().upper()
     token = d.get("webhook_token") or "hik_default"
-    d["serial"] = d.get("serie") or "DS-K1T320MFWX-B"
-    d["red"] = d.get("red_tipo") or "Wi-Fi / Cloud Push"
-    d["webhook_path"] = f"/api/v1/webhooks/hikvision/{token}"
-    d["webhook_url"] = f"{base_srv}/api/v1/webhooks/hikvision/{token}"
+    d["marca"] = marca
+    d["serial"] = d.get("serie") or ("ZK-SN-PENDIENTE" if marca == "ZKTECO" else "DS-K1T320MFWX-B")
+    d["red"] = d.get("red_tipo") or ("ADMS Cloud Push (/iclock)" if marca == "ZKTECO" else "Wi-Fi / Cloud Push")
+    if marca == "ZKTECO":
+        d["webhook_path"] = "/iclock/cdata"
+        d["webhook_url"] = f"{base_srv}/iclock/cdata?SN={d.get('serie') or ''}"
+    else:
+        d["webhook_path"] = f"/api/v1/webhooks/hikvision/{token}"
+        d["webhook_url"] = f"{base_srv}/api/v1/webhooks/hikvision/{token}"
     d["ultimo_contacto"] = d.get("ultima_sincronizacion") or "Reciente"
     return d
 
@@ -628,6 +769,8 @@ def _enrich_reloj(r: Any, request: Optional[Request] = None) -> Dict[str, Any]:
 def _enrich_empleado(e: Any) -> Dict[str, Any]:
     d = dict(e)
     d["area"] = d.get("area_nombre") or "General"
+    d["codigo_contpaqi"] = d.get("codigo_contpaqi") or ""
+    d["sin_nombre"] = db.is_default_employee_name(d.get("nombre"), d.get("codigo_empleado"))
     return d
 
 
@@ -637,6 +780,7 @@ def _enrich_area(a: Any, conn: db.DualConnection) -> Dict[str, Any]:
     parts = [p.strip() for p in horario.split("-")]
     d["hora_entrada"] = parts[0] if len(parts) >= 1 else "08:00"
     d["hora_salida"] = parts[1] if len(parts) >= 2 else "17:00"
+    d["dias_laborales"] = d.get("dias_laborales") or "1,2,3,4,5"
     d["reloj_asignado"] = d.get("ubicacion") or "Sucursal Activa"
     cnt = conn.execute(
         "SELECT COUNT(*) as cnt FROM empleados WHERE empresa_id = ? AND sucursal_id = ? AND area_nombre = ?",
@@ -657,6 +801,9 @@ async def api_dashboard_overview(
     emp_id, suc_id = db.resolve_user_scope(user["id"], empresa_id, sucursal_id)
     companies = db.get_user_companies(user["id"])
 
+    user_sub = db.get_user_subscription(user["id"])
+    user_settings = db.get_all_settings(user["id"])
+
     if not emp_id:
         return {
             "status": "success",
@@ -664,6 +811,8 @@ async def api_dashboard_overview(
             "active_empresa_id": None,
             "active_sucursal_id": None,
             "summary": {},
+            "settings": user_settings,
+            "subscription": user_sub,
             "recent_records": [],
             "devices": [],
             "relojes": [],
@@ -695,6 +844,8 @@ async def api_dashboard_overview(
         "active_empresa_id": emp_id,
         "active_sucursal_id": suc_id,
         "summary": summary,
+        "settings": user_settings,
+        "subscription": user_sub,
         "recent_records": records,
         "devices": relojes,
         "relojes": relojes,
@@ -787,41 +938,88 @@ async def api_add_device(
     if not emp_id or not suc_id:
         raise HTTPException(status_code=400, detail="Selecciona una empresa y sucursal válidas.")
 
+    device_id = payload.get("id")
+    marca = (payload.get("marca") or "HIKVISION").strip().upper()
+    if marca not in ("HIKVISION", "ZKTECO"):
+        marca = "HIKVISION"
+
     nombre = (payload.get("nombre") or "Nuevo Reloj").strip()
     ip = (payload.get("ip") or "DHCP / Remoto").strip()
     puerto = int(payload.get("puerto") or 80)
-    modelo = (payload.get("modelo") or "DS-K1T320MFWX-B").strip()
-    serie = (payload.get("serie") or f"HIK-{secrets.token_hex(4).upper()}").strip()
+    default_model = "SpeedFace-V5L / MB360" if marca == "ZKTECO" else "DS-K1T320MFWX-B"
+    modelo = (payload.get("modelo") or default_model).strip()
+    serie_raw = (payload.get("serie") or "").strip()
+    if marca == "ZKTECO" and not serie_raw:
+        raise HTTPException(status_code=400, detail="El Número de Serie (SN) es obligatorio para relojes ZKTeco ADMS.")
+    serie = serie_raw or f"HIK-{secrets.token_hex(4).upper()}"
+
     mac = (payload.get("mac") or "Automática Push").strip()
     firmware = (payload.get("firmware") or "V3.5.2").strip()
     area_asignada = (payload.get("area_asignada") or "General").strip()
     ubicacion = (payload.get("ubicacion") or "Acceso Principal").strip()
-    red_tipo = (payload.get("red_tipo") or "Cloud Push (HTTP Listening)").strip()
-
-    slug = "".join(c for c in nombre.lower() if c.isalnum())[:10] or "reloj"
-    webhook_token = f"hik_{slug}_{secrets.token_hex(4)}"
-    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    default_red = "ADMS Cloud Push (/iclock)" if marca == "ZKTECO" else "Cloud Push (HTTP Listening)"
+    red_tipo = (payload.get("red_tipo") or default_red).strip()
 
     conn = db.get_conn()
     cur = conn.cursor()
+    base_srv = get_server_base_url(request)
+
+    if device_id:
+        existing_clk = cur.execute(
+            "SELECT * FROM relojes WHERE id = ? AND empresa_id = ?",
+            (int(device_id), emp_id)
+        ).fetchone()
+        if not existing_clk:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Reloj no encontrado.")
+        cur.execute("""
+            UPDATE relojes
+            SET nombre = ?, marca = ?, modelo = ?, serie = ?, area_asignada = ?, ubicacion = ?, red_tipo = ?
+            WHERE id = ? AND empresa_id = ?
+        """, (nombre, marca, modelo, serie, area_asignada, ubicacion, red_tipo, int(device_id), emp_id))
+        conn.commit()
+        token_existing = existing_clk["webhook_token"] or ""
+        conn.close()
+        return {
+            "status": "success",
+            "id": int(device_id),
+            "marca": marca,
+            "modelo": modelo,
+            "webhook_token": token_existing,
+            "webhook_url": f"{base_srv}/iclock/cdata?SN={serie}" if marca == "ZKTECO" else f"{base_srv}/api/v1/webhooks/hikvision/{token_existing}"
+        }
+
+    sub = db.get_user_subscription(user["id"])
+    if sub["relojes_usados"] >= sub["max_relojes"]:
+        conn.close()
+        raise HTTPException(
+            status_code=403,
+            detail=f"Límite de relojes alcanzado ({sub['relojes_usados']}/{sub['max_relojes']} contratados). Amplía tu suscripción para registrar más relojes."
+        )
+
+    slug = "".join(c for c in nombre.lower() if c.isalnum())[:10] or "reloj"
+    prefix = "zk" if marca == "ZKTECO" else "hik"
+    webhook_token = f"{prefix}_{slug}_{secrets.token_hex(4)}"
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     cur.execute("""
         INSERT INTO relojes (
-            empresa_id, sucursal_id, nombre, modelo, serie, mac, firmware, ip, puerto, usuario, password,
+            empresa_id, sucursal_id, nombre, marca, modelo, serie, mac, firmware, ip, puerto, usuario, password,
             red_tipo, area_asignada, ubicacion, webhook_token, estado, ultima_sincronizacion
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'admin', '', ?, ?, ?, ?, 'ONLINE', ?)
-    """, (emp_id, suc_id, nombre, modelo, serie, mac, firmware, ip, puerto, red_tipo, area_asignada, ubicacion, webhook_token, now_str))
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'admin', '', ?, ?, ?, ?, 'ONLINE', ?)
+    """, (emp_id, suc_id, nombre, marca, modelo, serie, mac, firmware, ip, puerto, red_tipo, area_asignada, ubicacion, webhook_token, now_str))
     new_id = cur.lastrowid
     conn.commit()
     conn.close()
 
-    base_srv = get_server_base_url(request)
     return {
         "status": "success",
         "id": new_id,
         "estado": "ONLINE",
+        "marca": marca,
         "modelo": modelo,
         "webhook_token": webhook_token,
-        "webhook_url": f"{base_srv}/api/v1/webhooks/hikvision/{webhook_token}"
+        "webhook_url": f"{base_srv}/iclock/cdata?SN={serie}" if marca == "ZKTECO" else f"{base_srv}/api/v1/webhooks/hikvision/{webhook_token}"
     }
 
 
@@ -875,7 +1073,11 @@ async def api_create_or_update_employee(
     emp_id, suc_id = db.resolve_user_scope(user["id"], req_emp_id, req_suc_id)
 
     emp_no = str(payload.get("codigo_empleado", "")).strip()
-    nombre = (payload.get("nombre") or "").strip()
+    if not emp_no:
+        raise HTTPException(status_code=400, detail="El ID de reloj del colaborador es obligatorio.")
+
+    codigo_contpaqi = str(payload.get("codigo_contpaqi") or "").strip()
+    nombre = (payload.get("nombre") or "").strip() or f"Empleado #{emp_no}"
     area_nombre = (payload.get("area") or payload.get("area_nombre") or "General").strip()
     puesto = (payload.get("puesto") or "Colaborador").strip()
     turno = (payload.get("turno") or "Matutino (08:00 - 17:00)").strip()
@@ -883,9 +1085,6 @@ async def api_create_or_update_employee(
     tiene_huella = 1 if payload.get("tiene_huella") else 0
     tiene_rostro = 1 if payload.get("tiene_rostro") else 0
     reloj_asignado = (payload.get("reloj_asignado") or "Sucursal Activa").strip()
-
-    if not emp_no or not nombre:
-        raise HTTPException(status_code=400, detail="El ID de reloj y el nombre del colaborador son obligatorios.")
 
     conn = db.get_conn()
     cur = conn.cursor()
@@ -896,17 +1095,22 @@ async def api_create_or_update_employee(
     if existing:
         cur.execute("""
             UPDATE empleados
-            SET nombre = ?, area_nombre = ?, puesto = ?, turno = ?, pin = ?,
+            SET nombre = ?, codigo_contpaqi = ?, area_nombre = ?, puesto = ?, turno = ?, pin = ?,
                 tiene_huella = COALESCE(?, tiene_huella), tiene_rostro = COALESCE(?, tiene_rostro)
             WHERE id = ?
-        """, (nombre, area_nombre, puesto, turno, pin, tiene_huella, tiene_rostro, existing["id"]))
+        """, (nombre, codigo_contpaqi, area_nombre, puesto, turno, pin, tiene_huella, tiene_rostro, existing["id"]))
     else:
         cur.execute("""
             INSERT INTO empleados (
-                empresa_id, sucursal_id, codigo_empleado, nombre, area_nombre, puesto, turno, pin,
+                empresa_id, sucursal_id, codigo_empleado, codigo_contpaqi, nombre, area_nombre, puesto, turno, pin,
                 tiene_huella, tiene_rostro, tiene_tarjeta, admin_ui, reloj_asignado, estado
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, 'ACTIVO')
-        """, (emp_id, suc_id, emp_no, nombre, area_nombre, puesto, turno, pin, tiene_huella, tiene_rostro, reloj_asignado))
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, 'ACTIVO')
+        """, (emp_id, suc_id, emp_no, codigo_contpaqi, nombre, area_nombre, puesto, turno, pin, tiene_huella, tiene_rostro, reloj_asignado))
+    cur.execute("""
+        UPDATE checadas
+        SET nombre = ?, area = ?
+        WHERE empresa_id = ? AND sucursal_id = ? AND codigo_empleado = ?
+    """, (nombre, area_nombre, emp_id, suc_id, emp_no))
     conn.commit()
     conn.close()
 
@@ -973,6 +1177,7 @@ async def api_create_area(
     hora_out = (payload.get("hora_salida") or "17:00").strip()
     horario = payload.get("horario") or f"{hora_in} - {hora_out}"
     tolerancia_min = int(payload.get("tolerancia_min", 10))
+    dias_laborales = str(payload.get("dias_laborales") or "1,2,3,4,5").strip()
     ubicacion = (payload.get("reloj_asignado") or payload.get("ubicacion") or "Sucursal Activa").strip()
 
     if not nombre:
@@ -983,14 +1188,14 @@ async def api_create_area(
     if area_id:
         cur.execute("""
             UPDATE areas
-            SET codigo = ?, nombre = ?, responsable = ?, turno = ?, horario = ?, tolerancia_min = ?, ubicacion = ?
+            SET codigo = ?, nombre = ?, responsable = ?, turno = ?, horario = ?, tolerancia_min = ?, dias_laborales = ?, ubicacion = ?
             WHERE id = ? AND empresa_id = ?
-        """, (codigo, nombre, responsable, turno, horario, tolerancia_min, ubicacion, int(area_id), emp_id))
+        """, (codigo, nombre, responsable, turno, horario, tolerancia_min, dias_laborales, ubicacion, int(area_id), emp_id))
     else:
         cur.execute("""
-            INSERT INTO areas (empresa_id, sucursal_id, codigo, nombre, responsable, turno, horario, tolerancia_min, ubicacion)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (emp_id, suc_id, codigo, nombre, responsable, turno, horario, tolerancia_min, ubicacion))
+            INSERT INTO areas (empresa_id, sucursal_id, codigo, nombre, responsable, turno, horario, tolerancia_min, dias_laborales, ubicacion)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (emp_id, suc_id, codigo, nombre, responsable, turno, horario, tolerancia_min, dias_laborales, ubicacion))
     conn.commit()
     conn.close()
     return {"ok": True, "status": "success", "message": f"Área '{nombre}' guardada correctamente."}
@@ -1019,7 +1224,7 @@ async def api_get_settings(
     request: Request,
     user: Dict[str, Any] = Depends(require_rh_active)
 ):
-    settings = db.get_all_settings()
+    settings = db.get_all_settings(user["id"])
     base_srv = get_server_base_url(request)
     settings["local_ip"] = detect_local_ip()
     settings["webhook_port"] = config.PORT
@@ -1032,15 +1237,31 @@ async def api_update_settings(
     payload: Dict[str, Any] = Body(...),
     user: Dict[str, Any] = Depends(require_rh_active)
 ):
-    db.update_settings(payload)
-    return {"ok": True, "status": "success", "message": "Configuración guardada exitosamente"}
+    account_keys = {"operator_name", "operator_email", "operator_role", "operator_shift", "nombre", "email", "rol", "turno", "username", "new_password"}
+    settings_payload = {k: v for k, v in payload.items() if k not in ("username", "new_password")}
+    if settings_payload:
+        db.update_settings(settings_payload, user_id=user["id"])
+
+    updated_user = None
+    if any(k in payload for k in account_keys):
+        res_acc = db.update_user_own_account(user["id"], payload)
+        if not res_acc.get("ok"):
+            raise HTTPException(status_code=400, detail=res_acc.get("error", "No se pudo actualizar la cuenta."))
+        updated_user = res_acc["user"]
+
+    return {
+        "ok": True,
+        "status": "success",
+        "user": updated_user,
+        "message": "Configuración guardada exitosamente"
+    }
 
 
 # --- CONFIGURACIÓN DE CORREO (SMTP) Y REPORTES ---
 
 @app.get("/api/email/config")
 async def api_get_email_config(user: Dict[str, Any] = Depends(require_rh_active)):
-    cfg = db.get_email_config(mask_password=True)
+    cfg = db.get_email_config(mask_password=True, user_id=user["id"])
     return {"status": "success", "config": cfg}
 
 
@@ -1049,7 +1270,7 @@ async def api_update_email_config(
     payload: Dict[str, Any] = Body(...),
     user: Dict[str, Any] = Depends(require_rh_active)
 ):
-    updated = db.update_email_config(payload)
+    updated = db.update_email_config(payload, user_id=user["id"])
     return {"status": "success", "config": updated, "message": "Configuración de correo actualizada correctamente."}
 
 
@@ -1058,14 +1279,19 @@ async def api_test_email(
     payload: Dict[str, Any] = Body(...),
     user: Dict[str, Any] = Depends(require_rh_active)
 ):
+    cfg = db.get_email_config(mask_password=False, user_id=user["id"])
     test_to = (payload.get("to_email") or "").strip()
     if not test_to:
-        cfg = db.get_email_config(mask_password=False)
         test_to = cfg.get("destinatario_default") or cfg.get("smtp_user")
     if not test_to or "@" not in test_to:
         raise HTTPException(status_code=400, detail="Debes indicar un correo destinatario válido para la prueba.")
 
-    cfg_override = payload if ("smtp_host" in payload and payload.get("smtp_host")) else None
+    cfg_override = dict(cfg)
+    if "smtp_host" in payload and payload.get("smtp_host"):
+        for k, v in payload.items():
+            if k == "smtp_password" and v == "••••••••":
+                continue
+            cfg_override[k] = v
     now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     html_test = f"""
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 540px; margin: 0 auto; padding: 28px; background: #ffffff; border-radius: 16px; border: 1px solid #e4e4e7;">
@@ -1117,6 +1343,50 @@ async def api_query_report(
     return {"status": "success", "report": dataset}
 
 
+@app.get("/api/reports/export-contpaqi")
+async def api_export_contpaqi(
+    empresa_id: Optional[int] = None,
+    sucursal_id: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    tipo_periodo: str = "Quincenal",
+    numero_periodo: int = 1,
+    ejercicio: int = 2026,
+    concepto_falta: str = "Faltas injustificadas",
+    concepto_retardo: str = "Retardos",
+    concepto_extra: str = "Horas extras dobles",
+    user: Dict[str, Any] = Depends(require_rh_active)
+):
+    emp_id, suc_id = db.resolve_user_scope(user["id"], empresa_id, sucursal_id)
+    txt_content = db.generate_contpaqi_txt(
+        empresa_id=emp_id,
+        sucursal_id=suc_id,
+        start_date=start_date,
+        end_date=end_date,
+        tipo_periodo=tipo_periodo,
+        numero_periodo=numero_periodo,
+        ejercicio=ejercicio,
+        conceptos_map={
+            "falta": concepto_falta,
+            "retardo": concepto_retardo,
+            "horas_extra": concepto_extra
+        }
+    )
+    try:
+        txt_bytes = txt_content.encode("cp1252", errors="replace")
+        media_type = "text/plain; charset=windows-1252"
+    except Exception:
+        txt_bytes = txt_content.encode("utf-8")
+        media_type = "text/plain; charset=utf-8"
+
+    filename = f"CONTPAQi_Incidencias_P{numero_periodo}.txt"
+    return Response(
+        content=txt_bytes,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
 @app.post("/api/reports/send-email")
 async def api_send_report_email(
     payload: Dict[str, Any] = Body(...),
@@ -1136,7 +1406,7 @@ async def api_send_report_email(
 
     emp_id, suc_id = db.resolve_user_scope(user["id"], payload.get("empresa_id"), payload.get("sucursal_id"))
 
-    cfg = db.get_email_config(mask_password=False)
+    cfg = db.get_email_config(mask_password=False, user_id=user["id"])
     if not to_email:
         to_email = cfg.get("destinatario_default")
     if not to_email:
@@ -1232,7 +1502,8 @@ async def api_send_report_email(
         html_content=html_email,
         text_content=f"{report_title}\n{filters_desc}",
         attachment_filename=attachment_filename,
-        attachment_bytes=attachment_bytes
+        attachment_bytes=attachment_bytes,
+        config_override=cfg
     )
     if not res.get("ok"):
         raise HTTPException(status_code=400, detail=res.get("error", "Error al enviar el reporte por correo."))

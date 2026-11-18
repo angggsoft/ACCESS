@@ -13,7 +13,7 @@ import ViewReportes from './components/ViewReportes.js';
 import ViewConfiguracion from './components/ViewConfiguracion.js';
 import ViewAdminSaas from './components/ViewAdminSaas.js';
 import ModalConfig from './components/ModalConfig.js';
-import ModalEmpresas from './components/ModalEmpresas.js';
+import ModalConfirmHost from './components/ModalConfirm.js';
 
 const App = {
   components: {
@@ -27,19 +27,18 @@ const App = {
     ViewReportes,
     ViewConfiguracion,
     ViewAdminSaas,
-    ModalConfig,
-    ModalEmpresas
+    ModalConfirmHost,
+    ModalConfig
   },
   setup() {
     const activeModule = ref('inicio');
     const isSidebarCollapsed = ref(false);
     const isSyncing = ref(false);
 
-    // Modales Globales
+    // Modales Globales y Sección Activa del Módulo Empresa
     const isConfigModalOpen = ref(false);
     const configInitialSection = ref('perfil');
-    const isCompaniesModalOpen = ref(false);
-    const companiesModalTab = ref('selector');
+    const empresaSection = ref('empresas');
 
     // Referencias a vistas activas para disparar acciones desde el Header
     const relojesRef = ref(null);
@@ -146,6 +145,7 @@ const App = {
     let toastTimer = null;
     let islandTimer = null;
     const islandActivity = ref(null);
+    const notifyUnnamedEmployees = ref(true);
     let pollTimer = null;
     let lastTopRecordId = null;
 
@@ -163,9 +163,9 @@ const App = {
       };
     });
 
-    function showIslandActivity({ title, clock = '', method = '', badge = '', type = 'checkin' }, ms = 4200) {
+    function showIslandActivity({ title, clock = '', method = '', badge = '', type = 'checkin', empNo = null }, ms = 4200) {
       if (islandTimer) clearTimeout(islandTimer);
-      islandActivity.value = { id: Date.now(), title, clock, method, badge, type };
+      islandActivity.value = { id: Date.now(), title, clock, method, badge, type, empNo };
       islandTimer = setTimeout(() => { islandActivity.value = null; }, ms);
     }
 
@@ -231,6 +231,14 @@ const App = {
         }
 
         if (data.summary) summary.value = data.summary;
+        if (data.subscription && currentUser.value) {
+          currentUser.value = { ...currentUser.value, subscription: data.subscription };
+        }
+        if (data.settings) {
+          notifyUnnamedEmployees.value = data.settings.notify_unnamed_employees === undefined
+            ? true
+            : (data.settings.notify_unnamed_employees === '1' || data.settings.notify_unnamed_employees === true);
+        }
         if (Array.isArray(data.devices)) devices.value = data.devices;
         if (Array.isArray(data.employees)) employees.value = data.employees;
         if (Array.isArray(data.areas)) areas.value = data.areas;
@@ -239,14 +247,26 @@ const App = {
           const newest = data.recent_records[0];
           if (newest && lastTopRecordId !== null && newest.id > lastTopRecordId) {
             const isBounce = Boolean(newest.es_rebote);
+            const isUnnamed = Boolean(newest.sin_nombre);
             const nm = (newest.nombre || '').trim();
-            showIslandActivity({
-              title: nm || 'Empleado #' + newest.codigo_empleado,
-              clock: newest.reloj_nombre || primaryClock.value.nombre,
-              method: newest.metodo || 'BIOMÉTRICO',
-              badge: isBounce ? 'REBOTE' : 'VÁLIDO',
-              type: isBounce ? 'rebote' : 'checkin'
-            });
+            if (isUnnamed && notifyUnnamedEmployees.value) {
+              showIslandActivity({
+                title: `${nm || ('Empleado #' + newest.codigo_empleado)} · Asignar nombre`,
+                clock: newest.reloj_nombre || primaryClock.value.nombre,
+                method: newest.metodo || 'BIOMÉTRICO',
+                badge: 'SIN NOMBRE',
+                type: 'unnamed',
+                empNo: newest.codigo_empleado
+              }, 5800);
+            } else {
+              showIslandActivity({
+                title: nm || 'Empleado #' + newest.codigo_empleado,
+                clock: newest.reloj_nombre || primaryClock.value.nombre,
+                method: newest.metodo || 'BIOMÉTRICO',
+                badge: isBounce ? 'REBOTE' : 'VÁLIDO',
+                type: isBounce ? 'rebote' : 'checkin'
+              });
+            }
           }
           if (newest) {
             lastTopRecordId = newest.id;
@@ -268,7 +288,6 @@ const App = {
       activeBranchId.value = branchId;
       if (branchId) localStorage.setItem('access_branch_id', String(branchId));
       lastTopRecordId = null;
-      isCompaniesModalOpen.value = false;
       await fetchOverview(false);
       showToast({
         title: `${activeCompany.value.nombre} • ${activeBranch.value.nombre}`,
@@ -329,9 +348,15 @@ const App = {
       document.body.removeChild(link);
     }
 
-    function openCompaniesModal(tab = 'selector') {
-      companiesModalTab.value = tab;
-      isCompaniesModalOpen.value = true;
+    function openCompaniesModal(tab = 'empresas') {
+      const targetSection = tab === 'selector' ? 'empresas' : tab;
+      empresaSection.value = targetSection;
+      navigateTo('areas');
+      nextTick(() => {
+        if (areasRef.value && areasRef.value.setSection) {
+          areasRef.value.setSection(targetSection);
+        }
+      });
     }
 
     function navigateTo(moduleId) {
@@ -349,7 +374,9 @@ const App = {
       if (actionType === 'refresh' || actionType === 'sync-clock' || actionType === 'simulate-push') {
         refreshDashboard();
       } else if (actionType === 'modal-companies') {
-        openCompaniesModal('selector');
+        openCompaniesModal('empresas');
+      } else if (actionType === 'empresa-nueva') {
+        openCompaniesModal('nueva_empresa');
       } else if (actionType === 'modal-invite') {
         openCompaniesModal('invitar');
       } else if (actionType === 'export-csv') {
@@ -365,11 +392,12 @@ const App = {
             relojesRef.value.openAddModal();
           }
         });
-      } else if (actionType === 'modal-employee') {
+      } else if (actionType && actionType.startsWith('edit-unnamed:')) {
+        const empNo = actionType.slice('edit-unnamed:'.length);
         navigateTo('empleados');
         nextTick(() => {
-          if (empleadosRef.value && empleadosRef.value.openNewEmployee) {
-            empleadosRef.value.openNewEmployee();
+          if (empleadosRef.value && empleadosRef.value.openEditByCode) {
+            empleadosRef.value.openEditByCode(empNo);
           }
         });
       } else if (actionType === 'modal-area') {
@@ -441,8 +469,7 @@ const App = {
       islandActivity,
       isConfigModalOpen,
       configInitialSection,
-      isCompaniesModalOpen,
-      companiesModalTab,
+      empresaSection,
       openCompaniesModal,
       companies,
       activeCompanyId,
@@ -603,6 +630,7 @@ const App = {
               :areas="areas"
               :empresa-id="activeCompany.id"
               :sucursal-id="activeBranch.id"
+              :subscription="currentUser.subscription"
               :is-syncing="isSyncing"
               @refresh="fetchOverview(false)"
               @toast="onToast"
@@ -623,9 +651,13 @@ const App = {
               v-else-if="activeModule === 'areas'"
               ref="areasRef"
               :areas="areas"
+              :companies="companies"
               :empresa-id="activeCompany.id"
               :sucursal-id="activeBranch.id"
+              :initial-section="empresaSection"
               @refresh="fetchOverview(false)"
+              @select-scope="selectCompanyScope"
+              @refresh-companies="handleRefreshCompanies"
               @toast="onToast"
             />
 
@@ -645,6 +677,7 @@ const App = {
             <ViewConfiguracion
               v-else-if="activeModule === 'configuracion'"
               :devices="devices"
+              :companies="companies"
               :user="currentUser"
               @toast="onToast"
               @refresh="fetchOverview(false)"
@@ -657,23 +690,17 @@ const App = {
         <!-- Floating Real-Time Notification Toast -->
         <div
           v-if="toast.visible"
-          class="fixed bottom-6 right-6 z-50 max-w-md bg-white text-charcoal-900 rounded-2xl p-4 shadow-xl border border-charcoal-200 flex items-start gap-3.5 modal-card-anim">
-          <div
-            class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-lg"
-            :class="toast.type === 'rebote' ? 'bg-amber-50 text-amber-600' : (toast.type === 'info' ? 'bg-sky-50 text-sky-600' : 'bg-emerald-50 text-emerald-600')">
-            <i :class="['ph', toast.type === 'rebote' ? 'ph-warning-circle' : (toast.type === 'info' ? 'ph-buildings' : 'ph-fingerprint')]"></i>
-          </div>
+          class="fixed bottom-6 right-6 z-50 w-[22rem] max-w-[calc(100vw-3rem)] bg-white text-charcoal-900 rounded-2xl pl-4 pr-3 py-3.5 shadow-md border border-charcoal-200 flex items-start gap-3 modal-card-anim">
+          <span class="w-5 flex items-center justify-center shrink-0 mt-0.5">
+            <i
+              :class="['ph text-lg', toast.type === 'rebote' ? 'ph-warning-circle text-rose-600' : (toast.type === 'info' ? 'ph-check-circle text-charcoal-400' : 'ph-fingerprint text-charcoal-400')]"></i>
+          </span>
           <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2">
-              <span
-                class="text-[10px] mono-code font-bold uppercase tracking-wider px-2 py-0.5 rounded-md"
-                :class="toast.type === 'rebote' ? 'bg-amber-50 text-amber-700' : (toast.type === 'info' ? 'bg-sky-50 text-sky-700' : 'bg-emerald-50 text-emerald-700')">
-                {{ toast.badge }}
-              </span>
-              <span class="text-[10px] text-charcoal-400 mono-code">{{ activeBranch.nombre }}</span>
-            </div>
-            <p class="text-sm font-bold text-charcoal-900 mt-1 truncate">{{ toast.title }}</p>
+            <p class="text-sm font-semibold text-charcoal-900 leading-snug">{{ toast.title }}</p>
             <p v-if="toast.subtitle" class="text-xs text-charcoal-500 mono-code mt-0.5 leading-relaxed">{{ toast.subtitle }}</p>
+            <p class="text-[10px] text-charcoal-400 mono-code mt-1 uppercase tracking-wider">
+              {{ toast.badge }}<span v-if="activeBranch && activeBranch.nombre"> · {{ activeBranch.nombre }}</span>
+            </p>
           </div>
           <button
             type="button"
@@ -685,18 +712,6 @@ const App = {
 
       </div>
 
-      <!-- Modal Multi-Empresa, Sucursales y Clave Dinámica 5 min (TOTP) -->
-      <ModalEmpresas
-        :is-open="isCompaniesModalOpen"
-        :initial-tab="companiesModalTab"
-        :companies="companies"
-        :active-company-id="activeCompany.id"
-        :active-branch-id="activeBranch.id"
-        @close="isCompaniesModalOpen = false"
-        @select-scope="selectCompanyScope"
-        @refresh-companies="handleRefreshCompanies"
-        @toast="onToast"
-      />
 
       <!-- System Configuration Modal -->
       <ModalConfig
@@ -707,6 +722,9 @@ const App = {
         @navigate="navigateTo"
         @update-user="onUpdateUser"
       />
+
+      <!-- Diálogos propios del sistema (confirmación / aviso) -->
+      <ModalConfirmHost />
 
     </div>
   `

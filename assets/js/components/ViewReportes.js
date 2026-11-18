@@ -79,6 +79,67 @@ export default {
     const isTestingSmtp = ref(false);
     const smtpFeedback = ref({ type: '', message: '' });
 
+    // Estado del Modal CONTPAQi Nóminas (.txt ancho fijo)
+    const isContpaqiModalOpen = ref(false);
+    const isExportingContpaqi = ref(false);
+    const contpaqiForm = ref({
+      tipo_periodo: 'Quincenal',
+      numero_periodo: 1,
+      ejercicio: new Date().getFullYear(),
+      concepto_falta: 'Faltas injustificadas',
+      concepto_retardo: 'Retardos',
+      concepto_extra: 'Horas extras dobles'
+    });
+
+    function openContpaqiModal() {
+      contpaqiForm.value.ejercicio = new Date().getFullYear();
+      isContpaqiModalOpen.value = true;
+    }
+
+    async function downloadContpaqiTxt() {
+      isExportingContpaqi.value = true;
+      try {
+        const params = new URLSearchParams({
+          start_date: customStartDate.value || '',
+          end_date: customEndDate.value || '',
+          tipo_periodo: contpaqiForm.value.tipo_periodo,
+          numero_periodo: String(contpaqiForm.value.numero_periodo || 1),
+          ejercicio: String(contpaqiForm.value.ejercicio || new Date().getFullYear()),
+          concepto_falta: contpaqiForm.value.concepto_falta || 'Faltas injustificadas',
+          concepto_retardo: contpaqiForm.value.concepto_retardo || 'Retardos',
+          concepto_extra: contpaqiForm.value.concepto_extra || 'Horas extras dobles'
+        });
+        if (props.empresaId) params.set('empresa_id', String(props.empresaId));
+        if (props.sucursalId) params.set('sucursal_id', String(props.sucursalId));
+
+        const res = await fetch(`/api/reports/export-contpaqi?${params.toString()}`);
+        if (!res.ok) {
+          emit('toast', 'Error al generar archivo para CONTPAQi', 'error');
+          return;
+        }
+        const blob = await res.blob();
+        if (blob.size === 0) {
+          emit('toast', 'No se detectaron faltas, retardos ni horas extra en el periodo seleccionado', 'info');
+          isContpaqiModalOpen.value = false;
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `CONTPAQi_Incidencias_P${contpaqiForm.value.numero_periodo || 1}.txt`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        isContpaqiModalOpen.value = false;
+        emit('toast', 'Layout CONTPAQi (.txt) generado y descargado');
+      } catch (e) {
+        emit('toast', 'Error de red al exportar archivo CONTPAQi', 'error');
+      } finally {
+        isExportingContpaqi.value = false;
+      }
+    }
+
     // Calcular fechas según preset
     function updateDatePreset(preset) {
       datePreset.value = preset;
@@ -421,7 +482,12 @@ export default {
       smtpFeedback,
       saveSmtpSettings,
       testSmtpSettings,
-      loadEmailConfig
+      loadEmailConfig,
+      isContpaqiModalOpen,
+      isExportingContpaqi,
+      contpaqiForm,
+      openContpaqiModal,
+      downloadContpaqiTxt
     };
   },
   template: `
@@ -437,20 +503,18 @@ export default {
           class="p-4 rounded-3xl border text-left transition-all cursor-pointer relative group flex flex-col justify-between"
           :class="activeReportType === rt.id 
             ? 'bg-[#18181B] text-white border-transparent shadow-md' 
-            : 'bg-white hover:bg-charcoal-50/80 text-charcoal-800 border-charcoal-200 shadow-2xs'">
+            : 'bg-white hover:bg-charcoal-50/80 text-charcoal-800 border-charcoal-200 shadow-sm'">
           <div>
-            <div class="flex items-center justify-between mb-2">
-              <div 
-                class="w-10 h-10 rounded-2xl flex items-center justify-center text-lg"
-                :class="activeReportType === rt.id ? 'bg-white/10 text-white' : 'bg-charcoal-100 text-charcoal-700'">
-                <i :class="['ph', rt.icon]"></i>
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-3 min-w-0">
+                <span class="w-5 flex items-center justify-center shrink-0"><i :class="['ph', rt.icon, 'text-lg', activeReportType === rt.id ? 'text-white' : 'text-charcoal-400']"></i></span>
+                <h4 class="font-semibold text-sm tracking-tight leading-snug truncate">{{ rt.label }}</h4>
               </div>
-              <span v-if="activeReportType === rt.id" class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-white/20 text-white uppercase tracking-wider">
+              <span v-if="activeReportType === rt.id" class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-white/20 text-white uppercase tracking-wider shrink-0">
                 Activo
               </span>
             </div>
-            <h4 class="font-bold text-sm tracking-tight leading-snug">{{ rt.label }}</h4>
-            <p class="text-[11px] mt-1 line-clamp-2" :class="activeReportType === rt.id ? 'text-charcoal-300' : 'text-charcoal-500'">
+            <p class="text-[11px] mt-1.5 pl-8 line-clamp-2" :class="activeReportType === rt.id ? 'text-charcoal-300' : 'text-charcoal-500'">
               {{ rt.desc }}
             </p>
           </div>
@@ -577,22 +641,38 @@ export default {
         
         <!-- Barra de título y buscador dentro de la tabla -->
         <div class="p-4 sm:p-5 border-b border-charcoal-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-charcoal-50/50">
-          <div>
-            <h3 class="text-base font-bold text-charcoal-900">{{ reportData.title }}</h3>
-            <p class="text-xs text-charcoal-500 mt-0.5">
+          <div class="flex items-center gap-3 min-w-0">
+            <span class="w-5 flex items-center justify-center shrink-0">
+              <i :class="['ph', reportTypes.find(r => r.id === activeReportType)?.icon || 'ph-chart-bar', 'text-lg text-charcoal-400']"></i>
+            </span>
+            <div class="min-w-0">
+            <h3 class="text-sm font-semibold text-charcoal-900">{{ reportData.title }}</h3>
+            <p class="text-[11px] text-charcoal-400">
               {{ filteredRows.length }} registros encontrados
               <span v-if="customStartDate && customEndDate">• Periodo: {{ customStartDate }} al {{ customEndDate }}</span>
             </p>
+            </div>
           </div>
 
-          <div class="relative w-full sm:w-64">
-            <i class="ph ph-magnifying-glass absolute left-3 top-2.5 text-charcoal-400 text-sm"></i>
-            <input
-              type="text"
-              v-model="searchQuery"
-              placeholder="Buscar en el reporte..."
-              class="w-full h-9 pl-9 pr-3 rounded-xl border border-charcoal-200 bg-white text-xs focus:ring-2 focus:ring-black focus:outline-none"
-            />
+          <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
+            <button
+              v-if="activeReportType === 'empleados'"
+              type="button"
+              @click="openContpaqiModal"
+              class="h-9 px-4 rounded-xl bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center justify-center gap-1.5 shrink-0 cursor-pointer transition-all shadow-xs">
+              <i class="ph ph-file-txt text-sm"></i>
+              <span>Exportar CONTPAQi (.txt)</span>
+            </button>
+
+            <div class="relative w-full sm:w-64">
+              <i class="ph ph-magnifying-glass absolute left-3 top-2.5 text-charcoal-400 text-sm"></i>
+              <input
+                type="text"
+                v-model="searchQuery"
+                placeholder="Buscar en el reporte..."
+                class="w-full h-9 pl-9 pr-3 rounded-xl border border-charcoal-200 bg-white text-xs focus:ring-2 focus:ring-black focus:outline-none"
+              />
+            </div>
           </div>
         </div>
 
@@ -629,32 +709,32 @@ export default {
                 <td class="py-3.5 px-3 text-center mono-code font-bold text-charcoal-900 bg-charcoal-50/50">
                   {{ row.dias_asistidos ?? row.dias_activos ?? 0 }}
                 </td>
-                <td class="py-3.5 px-3 text-center mono-code font-bold" :class="(row.retardos > 0) ? 'text-rose-600 bg-rose-50/30' : 'text-charcoal-400'">
+                <td class="py-3.5 px-3 text-center mono-code font-bold" :class="(row.retardos > 0) ? 'text-rose-600' : 'text-charcoal-400'">
                   {{ row.retardos || 0 }}
                 </td>
-                <td class="py-3.5 px-3 text-center mono-code font-bold" :class="(row.dias_incompletos > 0) ? 'text-amber-600 bg-amber-50/30' : 'text-charcoal-400'">
+                <td class="py-3.5 px-3 text-center mono-code font-bold" :class="(row.dias_incompletos > 0) ? 'text-charcoal-900' : 'text-charcoal-400'">
                   {{ row.dias_incompletos || 0 }}
                 </td>
-                <td class="py-3.5 px-3 text-center mono-code font-bold text-indigo-700 bg-indigo-50/20">
+                <td class="py-3.5 px-3 text-center mono-code font-bold text-charcoal-900">
                   {{ row.horas_trabajadas || 0 }}h
                 </td>
-                <td class="py-3.5 px-3 text-center mono-code font-bold text-emerald-700">
+                <td class="py-3.5 px-3 text-center mono-code font-bold text-charcoal-900">
                   {{ row.total_validas || 0 }}
                 </td>
                 <td class="py-3.5 px-3 text-center mono-code font-semibold text-charcoal-400">
                   {{ row.total_rebotes || 0 }}
                 </td>
                 <td class="py-3.5 px-5 text-right">
-                  <span v-if="row.total_validas > 0" class="px-3 py-1 rounded-full text-[10px] font-bold"
+                  <span v-if="row.total_validas > 0" class="text-[11px] font-semibold"
                     :class="{
-                      'bg-emerald-50 text-emerald-800 border border-emerald-200': row.estatus === 'ASISTENCIA PUNTUAL',
-                      'bg-rose-50 text-rose-800 border border-rose-200': row.estatus && row.estatus.includes('RETARDO'),
-                      'bg-amber-50 text-amber-800 border border-amber-200': row.estatus && row.estatus.includes('INCOMPLETO') && !row.estatus.includes('RETARDO'),
-                      'bg-charcoal-100 text-charcoal-800 border border-charcoal-200': !row.estatus || row.estatus === 'SIN REGISTROS'
+                      'text-charcoal-900': row.estatus === 'ASISTENCIA PUNTUAL',
+                      'text-rose-600': row.estatus && row.estatus.includes('RETARDO'),
+                      'text-charcoal-600': row.estatus && row.estatus.includes('INCOMPLETO') && !row.estatus.includes('RETARDO'),
+                      'text-charcoal-400': !row.estatus || row.estatus === 'SIN REGISTROS'
                     }">
                     {{ row.estatus }}
                   </span>
-                  <span v-else class="px-3 py-1 rounded-full text-[10px] font-bold bg-charcoal-100 text-charcoal-500 border border-charcoal-200">
+                  <span v-else class="text-[11px] font-semibold text-charcoal-400">
                     SIN REGISTROS
                   </span>
                 </td>
@@ -690,9 +770,8 @@ export default {
                 <td class="py-3.5 px-4 font-medium text-charcoal-800">{{ row.area }}</td>
                 <td class="py-3.5 px-4 text-charcoal-700 font-medium">{{ row.reloj_nombre }}</td>
                 <td class="py-3.5 px-4">
-                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold"
-                    :class="row.metodo === 'ROSTRO' ? 'bg-sky-50 text-sky-700 border border-sky-200' : (row.metodo === 'HUELLA' ? 'bg-purple-50 text-purple-700 border border-purple-200' : 'bg-charcoal-100 text-charcoal-800 border border-charcoal-200')">
-                    <i :class="['ph', row.metodo === 'ROSTRO' ? 'ph-scan' : (row.metodo === 'HUELLA' ? 'ph-fingerprint' : 'ph-key')]"></i>
+                  <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-charcoal-700">
+                    <i :class="[\'ph text-charcoal-400\', row.metodo === 'ROSTRO' ? 'ph-scan' : (row.metodo === 'HUELLA' ? 'ph-fingerprint' : 'ph-key')]"></i>
                     <span>{{ row.metodo }}</span>
                   </span>
                 </td>
@@ -700,10 +779,10 @@ export default {
                   {{ row.fecha_hora_display }}
                 </td>
                 <td class="py-3.5 px-5 text-right">
-                  <span v-if="!row.es_rebote" class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                  <span v-if="!row.es_rebote" class="text-[11px] font-semibold text-charcoal-900">
                     VÁLIDO
                   </span>
-                  <span v-else class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                  <span v-else class="text-[11px] font-medium text-charcoal-400">
                     REBOTE &lt;180S
                   </span>
                 </td>
@@ -742,21 +821,21 @@ export default {
                 <td class="py-4 px-4 text-center mono-code font-bold text-charcoal-900 text-sm">
                   {{ row.total_eventos_periodo }}
                 </td>
-                <td class="py-4 px-4 text-center mono-code font-bold text-emerald-700">
+                <td class="py-4 px-4 text-center mono-code font-bold text-charcoal-900">
                   {{ row.validas }}
                 </td>
-                <td class="py-4 px-4 text-center mono-code font-semibold text-amber-700">
+                <td class="py-4 px-4 text-center mono-code font-semibold text-charcoal-400">
                   {{ row.rebotes }}
                 </td>
-                <td class="py-4 px-4 text-center mono-code font-bold text-sky-700">
+                <td class="py-4 px-4 text-center mono-code font-bold text-charcoal-900">
                   {{ row.usuarios_distintos }}
                 </td>
                 <td class="py-4 px-4 mono-code text-[11px] text-charcoal-600">
                   {{ row.ultima_actividad }}
                 </td>
                 <td class="py-4 px-5 text-right">
-                  <span class="px-2.5 py-1 rounded-full text-[10px] font-bold"
-                    :class="row.estado === 'ONLINE' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'">
+                  <span class="text-[11px] font-semibold"
+                    :class="row.estado === 'ONLINE' ? 'text-charcoal-900' : 'text-charcoal-400'">
                     {{ row.estado }}
                   </span>
                 </td>
@@ -795,18 +874,18 @@ export default {
                 <td class="py-4 px-4 text-center mono-code font-bold text-charcoal-900">
                   {{ row.plantilla }} personas
                 </td>
-                <td class="py-4 px-4 text-center mono-code font-bold text-emerald-700">
+                <td class="py-4 px-4 text-center mono-code font-bold text-charcoal-900">
                   {{ row.colaboradores_presentes }}
                 </td>
                 <td class="py-4 px-4 text-center">
                   <div class="inline-flex items-center gap-1.5">
                     <span class="mono-code font-bold text-charcoal-900">{{ row.cobertura_pct }}%</span>
                     <div class="w-12 h-2 rounded-full bg-charcoal-100 overflow-hidden">
-                      <div class="h-full bg-emerald-500 rounded-full" :style="{ width: row.cobertura_pct + '%' }"></div>
+                      <div class="h-full bg-charcoal-900 rounded-full" :style="{ width: row.cobertura_pct + '%' }"></div>
                     </div>
                   </div>
                 </td>
-                <td class="py-4 px-5 text-right mono-code font-black text-emerald-700 text-sm">
+                <td class="py-4 px-5 text-right mono-code font-black text-charcoal-900 text-sm">
                   {{ row.total_validas }}
                 </td>
               </tr>
@@ -838,7 +917,7 @@ export default {
           <div class="p-3.5 rounded-2xl bg-charcoal-50 border border-charcoal-200 space-y-1.5">
             <div class="font-bold text-charcoal-900 flex items-center justify-between">
               <span>{{ reportData.title }}</span>
-              <span class="mono-code text-[11px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+              <span class="mono-code text-[11px] text-charcoal-600 font-bold">
                 {{ filteredRows.length }} registros
               </span>
             </div>
@@ -996,7 +1075,7 @@ export default {
                 <button
                   type="button"
                   @click="showSmtpPass = !showSmtpPass"
-                  class="text-[10px] text-sky-600 font-semibold cursor-pointer">
+                  class="text-[10px] text-charcoal-600 font-semibold cursor-pointer">
                   {{ showSmtpPass ? 'Ocultar' : 'Mostrar' }}
                 </button>
               </div>
@@ -1053,6 +1132,66 @@ export default {
             </button>
           </div>
 
+        </div>
+      </ModalBase>
+
+      <!-- MODAL: EXPORTAR LAYOUT CONTPAQi NÓMINAS (.TXT) -->
+      <ModalBase
+        v-if="isContpaqiModalOpen"
+        title="Exportar Incidencias para CONTPAQi Nóminas (.txt)"
+        :confirmLabel="isExportingContpaqi ? 'Generando...' : 'Descargar Layout (.txt)'"
+        :confirmDisabled="isExportingContpaqi"
+        size="md"
+        @close="isContpaqiModalOpen = false"
+        @confirm="downloadContpaqiTxt">
+        <div class="space-y-4 text-xs">
+          <div class="p-3.5 rounded-2xl bg-offwhite border border-charcoal-200 text-[11px] text-charcoal-600">
+            Se generará un archivo de ancho fijo (<b>Maestro-Detalle</b>) evaluando el rango
+            <b class="mono-code">{{ customStartDate || 'últimos 14 días' }}</b> al <b class="mono-code">{{ customEndDate || 'hoy' }}</b>
+            según los días laborales y tolerancias de cada área.
+          </div>
+
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="block font-bold text-charcoal-800 mb-1">Tipo de Periodo</label>
+              <select v-model="contpaqiForm.tipo_periodo" class="w-full px-3 py-2.5 rounded-xl border border-charcoal-200 bg-white font-semibold">
+                <option value="Semanal">Semanal</option>
+                <option value="Quincenal">Quincenal</option>
+                <option value="Catorcenal">Catorcenal</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-bold text-charcoal-800 mb-1">Número de Periodo</label>
+              <input v-model.number="contpaqiForm.numero_periodo" type="number" min="1" max="53"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 mono-code font-bold">
+            </div>
+            <div>
+              <label class="block font-bold text-charcoal-800 mb-1">Ejercicio</label>
+              <input v-model.number="contpaqiForm.ejercicio" type="number" min="2020" max="2099"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 mono-code font-bold">
+            </div>
+          </div>
+
+          <div class="space-y-2.5 pt-1">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-charcoal-400 block">
+              Nombres Exactos de Conceptos en CONTPAQi
+            </span>
+            <div>
+              <label class="block font-bold text-charcoal-800 mb-1">Concepto para Faltas</label>
+              <input v-model="contpaqiForm.concepto_falta" type="text" maxlength="33"
+                class="w-full px-3.5 py-2 rounded-xl border border-charcoal-200">
+            </div>
+            <div>
+              <label class="block font-bold text-charcoal-800 mb-1">Concepto para Retardos</label>
+              <input v-model="contpaqiForm.concepto_retardo" type="text" maxlength="33"
+                class="w-full px-3.5 py-2 rounded-xl border border-charcoal-200">
+            </div>
+            <div>
+              <label class="block font-bold text-charcoal-800 mb-1">Concepto para Horas Extra</label>
+              <input v-model="contpaqiForm.concepto_extra" type="text" maxlength="33"
+                class="w-full px-3.5 py-2 rounded-xl border border-charcoal-200">
+            </div>
+          </div>
         </div>
       </ModalBase>
 

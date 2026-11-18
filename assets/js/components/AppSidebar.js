@@ -39,16 +39,18 @@ export const MODULES_NAV = [
     shortLabel: 'Empleados y Biometría', 
     icon: 'ph-users-three',
     actions: [
-      { id: 'new_emp', label: 'Registrar / Asignar Empleado', subtitle: 'Vincular ID del reloj con Área y Turno', icon: 'ph-user-plus', type: 'modal-employee' }
+      { id: 'refresh_emp', label: 'Actualizar Plantilla', subtitle: 'Sincronizar empleados detectados en reloj', icon: 'ph-arrows-clockwise', type: 'refresh' }
     ]
   },
   { 
     id: 'areas', 
-    title: 'Áreas y Turnos', 
-    shortLabel: 'Áreas y Turnos', 
+    title: 'Empresa, Sucursales y Áreas', 
+    shortLabel: 'Empresa y Áreas', 
     icon: 'ph-buildings',
     actions: [
-      { id: 'new_area', label: 'Nueva Área / Turno', subtitle: 'Crear departamento, turno y tolerancia', icon: 'ph-plus-circle', type: 'modal-area' }
+      { id: 'new_area', label: 'Nueva Área / Turno', subtitle: 'Crear departamento, horario y días laborales', icon: 'ph-plus-circle', type: 'modal-area' },
+      { id: 'new_comp', label: 'Crear Nueva Empresa', subtitle: 'Registrar razón social y sucursal matriz', icon: 'ph-buildings', type: 'empresa-nueva' },
+      { id: 'invite_rh', label: 'Equipo y Código de Acceso', subtitle: 'Unirse a empresa, generar código o gestionar miembros', icon: 'ph-users-three', type: 'modal-invite' }
     ]
   },
   { 
@@ -137,26 +139,7 @@ export default {
             <span v-show="!isCollapsed" class="ml-3 text-sm truncate flex-1 text-left" :class="{ 'font-semibold': activeModule === m.id }">
               {{ m.shortLabel }}
             </span>
-            <span v-show="!isCollapsed && m.actions && m.actions.length && activeModule === m.id" class="text-[10px] text-charcoal-400">
-              <i class="ph ph-caret-down text-xs"></i>
-            </span>
           </button>
-
-          <!-- NESTED ACTIONS -->
-          <div 
-            v-if="!isCollapsed && activeModule === m.id && m.actions && m.actions.length" 
-            class="ml-6 pl-3 border-l-2 border-charcoal-200 py-1 space-y-1 animate-in fade-in duration-150">
-            
-            <button 
-              v-for="act in m.actions" 
-              :key="act.id" 
-              type="button" 
-              @click.stop="executeSubAction(act)" 
-              class="w-full h-8 px-2.5 rounded-lg text-xs font-medium flex items-center gap-2.5 hover:bg-charcoal-100 text-charcoal-600 hover:text-charcoal-900 transition-colors cursor-pointer text-left group">
-              <i :class="['ph', act.icon, 'text-charcoal-400 group-hover:text-charcoal-700 text-sm shrink-0']"></i>
-              <span class="truncate flex-1">{{ act.label }}</span>
-            </button>
-          </div>
 
         </div>
 

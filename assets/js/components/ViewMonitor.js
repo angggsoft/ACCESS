@@ -124,14 +124,17 @@ export default {
         <div class="bg-white rounded-3xl px-6 py-5 border border-charcoal-200 shadow-sm flex items-center gap-4">
           <span class="text-5xl font-black text-charcoal-900 tracking-tight leading-none">{{ summary.total_checadas || 0 }}</span>
           <div><p class="text-sm font-bold text-charcoal-900">Eventos</p><p class="text-[11px] text-charcoal-400">totales en sistema</p></div>
+          <i class="ph ph-list-checks text-2xl text-charcoal-300 ml-auto shrink-0"></i>
         </div>
         <div class="bg-white rounded-3xl px-6 py-5 border border-charcoal-200 shadow-sm flex items-center gap-4">
-          <span class="text-5xl font-black text-emerald-600 tracking-tight leading-none">{{ summary.checadas_validas || 0 }}</span>
+          <span class="text-5xl font-black text-charcoal-900 tracking-tight leading-none">{{ summary.checadas_validas || 0 }}</span>
           <div><p class="text-sm font-bold text-charcoal-900">Válidas</p><p class="text-[11px] text-charcoal-400">para pre-nómina</p></div>
+          <i class="ph ph-check-circle text-2xl text-charcoal-300 ml-auto shrink-0"></i>
         </div>
         <div class="bg-white rounded-3xl px-6 py-5 border border-charcoal-200 shadow-sm flex items-center gap-4">
-          <span class="text-5xl font-black text-amber-500 tracking-tight leading-none">{{ summary.rebotes_ignorados || 0 }}</span>
+          <span class="text-5xl font-black text-charcoal-900 tracking-tight leading-none">{{ summary.rebotes_ignorados || 0 }}</span>
           <div><p class="text-sm font-bold text-charcoal-900">Rebotes</p><p class="text-[11px] text-charcoal-400">filtro anti-rebote (&lt;180s)</p></div>
+          <i class="ph ph-arrows-clockwise text-2xl text-charcoal-300 ml-auto shrink-0"></i>
         </div>
       </div>
 
@@ -159,8 +162,8 @@ export default {
               :key="st.id"
               type="button"
               @click="statusFilter = st.id"
-              class="px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer"
-              :class="statusFilter === st.id ? 'bg-[#18181B] text-white' : 'bg-charcoal-100 text-charcoal-600 hover:bg-charcoal-200'">
+              class="px-2.5 py-1.5 text-xs transition-colors cursor-pointer"
+              :class="statusFilter === st.id ? 'text-charcoal-900 font-bold' : 'text-charcoal-400 font-medium hover:text-charcoal-700'">
               {{ st.label }}
             </button>
           </div>
@@ -179,8 +182,8 @@ export default {
               :key="mt.id"
               type="button"
               @click="methodFilter = mt.id"
-              class="px-2.5 py-1.5 rounded-full text-[11px] font-semibold transition-all cursor-pointer"
-              :class="methodFilter === mt.id ? 'bg-indigo-600 text-white' : 'bg-charcoal-100 text-charcoal-600 hover:bg-charcoal-200'">
+              class="px-2 py-1.5 text-xs transition-colors cursor-pointer"
+              :class="methodFilter === mt.id ? 'text-charcoal-900 font-bold' : 'text-charcoal-400 font-medium hover:text-charcoal-700'">
               {{ mt.label }}
             </button>
           </div>
@@ -221,12 +224,12 @@ export default {
               <tr v-for="rec in filteredRecords" :key="rec.id" class="hover:bg-charcoal-50/80 transition-colors new-row-flash">
                 <td class="py-3.5 px-5 mono-code font-bold text-charcoal-600">
                   <span v-if="rec.serial_no">#{{ rec.serial_no }}</span>
-                  <span v-else class="text-sky-600 font-bold">MANUAL</span>
+                  <span v-else class="text-charcoal-900 font-bold">MANUAL</span>
                   <span class="block text-[10px] font-normal text-charcoal-400">Reg {{ rec.id }}</span>
                 </td>
                 <td class="py-3.5 px-4">
                   <div class="flex items-center gap-3">
-                    <div class="w-8 h-8 rounded-full bg-[#18181B] text-white flex items-center justify-center text-xs font-bold shrink-0">
+                    <div class="w-8 h-8 rounded-full bg-charcoal-100 text-charcoal-700 flex items-center justify-center text-xs font-bold shrink-0">
                       {{ (rec.nombre || 'E').slice(0, 2).toUpperCase() }}
                     </div>
                     <div>
@@ -236,21 +239,14 @@ export default {
                   </div>
                 </td>
                 <td class="py-3.5 px-4">
-                  <span class="px-2.5 py-1 rounded-lg bg-charcoal-100 text-charcoal-800 font-semibold text-[11px]">
+                  <span class="text-charcoal-600 font-medium text-xs">
                     {{ rec.area }}
                   </span>
                 </td>
                 <td class="py-3.5 px-4">
                   <div class="flex items-center gap-2">
-                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border"
-                      :class="{
-                        'bg-indigo-50 text-indigo-700 border-indigo-200': rec.metodo === 'HUELLA',
-                        'bg-emerald-50 text-emerald-700 border-emerald-200': rec.metodo === 'ROSTRO',
-                        'bg-amber-50 text-amber-700 border-amber-200': rec.metodo === 'PIN',
-                        'bg-sky-50 text-sky-700 border-sky-200': rec.metodo === 'MANUAL',
-                        'bg-charcoal-100 text-charcoal-800 border-charcoal-200': !['HUELLA','ROSTRO','PIN','MANUAL'].includes(rec.metodo)
-                      }">
-                      <i class="ph text-sm" :class="{
+                    <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-charcoal-700">
+                      <i class="ph text-sm text-charcoal-400" :class="{
                         'ph-fingerprint': rec.metodo === 'HUELLA',
                         'ph-scan-smiley': rec.metodo === 'ROSTRO',
                         'ph-password': rec.metodo === 'PIN',
@@ -272,23 +268,23 @@ export default {
                 </td>
                 <td class="py-3.5 px-5 text-right">
                   <div class="flex flex-col items-end gap-1">
-                    <span v-if="rec.es_rebote" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                    <span v-if="rec.es_rebote" class="inline-flex items-center gap-1.5 text-[11px] font-medium text-charcoal-400">
                       <i class="ph ph-warning-circle text-sm"></i>
                       REBOTE IGNORADO (&lt;180s)
                     </span>
-                    <span v-else-if="rec.es_manual" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
+                    <span v-else-if="rec.es_manual" class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-charcoal-600">
                       <i class="ph ph-pencil-simple-line text-sm"></i>
                       {{ rec.estatus_prenomina || 'JUSTIFICADO (MANUAL)' }}
                     </span>
-                    <span v-else-if="rec.estatus_prenomina && rec.estatus_prenomina.startsWith('RETARDO')" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                    <span v-else-if="rec.estatus_prenomina && rec.estatus_prenomina.startsWith('RETARDO')" class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-rose-600">
                       <i class="ph ph-clock-countdown text-sm"></i>
                       {{ rec.estatus_prenomina }}
                     </span>
-                    <span v-else-if="rec.estatus_prenomina === 'PUNTUAL'" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span v-else-if="rec.estatus_prenomina === 'PUNTUAL'" class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-charcoal-900">
                       <i class="ph ph-check-circle text-sm"></i>
                       PUNTUAL
                     </span>
-                    <span v-else class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-charcoal-100 text-charcoal-700 border border-charcoal-200">
+                    <span v-else class="inline-flex items-center gap-1.5 text-[11px] font-medium text-charcoal-500">
                       <i class="ph ph-sign-out text-sm"></i>
                       {{ rec.estatus_prenomina || 'SALIDA / REGISTRO' }}
                     </span>
@@ -304,15 +300,13 @@ export default {
       </div>
 
       <!-- MODAL CHECADA MANUAL / JUSTIFICACIÓN -->
-      <div v-if="showManualModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+      <div v-if="showManualModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
         <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-charcoal-200 space-y-4">
           <div class="flex items-center justify-between pb-3 border-b border-charcoal-100">
             <div class="flex items-center gap-2.5">
-              <div class="w-9 h-9 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                <i class="ph ph-pencil-simple-line text-xl"></i>
-              </div>
+              <span class="w-5 flex items-center justify-center shrink-0"><i class="ph ph-pencil-simple-line text-lg text-charcoal-400"></i></span>
               <div>
-                <h3 class="text-sm font-bold text-charcoal-900">Registrar Checada Manual</h3>
+                <h3 class="text-sm font-semibold text-charcoal-900">Registrar Checada Manual</h3>
                 <p class="text-[11px] text-charcoal-400">Incidencia autorizada para pre-nómina</p>
               </div>
             </div>

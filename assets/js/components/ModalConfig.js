@@ -49,7 +49,7 @@ export default {
     const tabs = [
       { id: 'perfil', label: 'Perfil', icon: 'ph-user' },
       { id: 'correo', label: 'Servidor SMTP / Correo', icon: 'ph-envelope-simple' },
-      { id: 'terminal', label: 'Anti-Rebote', icon: 'ph-shield-check' }
+      { id: 'terminal', label: 'Anti-Rebote', icon: 'ph-funnel' }
     ];
 
     watch(() => props.initialTab, (v) => { if (v) currentTab.value = v; }, { immediate: true });
@@ -215,9 +215,9 @@ export default {
             :key="t.id"
             type="button"
             @click="currentTab = t.id"
-            class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
-            :class="currentTab === t.id ? 'bg-[#18181B] text-white shadow-2xs' : 'text-charcoal-600 hover:bg-charcoal-100'">
-            <i :class="['ph', t.icon]"></i>
+            class="px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap"
+            :class="currentTab === t.id ? 'bg-[#18181B] text-white' : 'text-charcoal-600 hover:bg-charcoal-100'">
+            <span class="w-5 flex items-center justify-center shrink-0"><i :class="['ph text-base', t.icon, currentTab === t.id ? 'text-white' : 'text-charcoal-400']"></i></span>
             <span>{{ t.label }}</span>
           </button>
         </div>
@@ -227,11 +227,8 @@ export default {
       <!-- Tab 1: Perfil -->
       <div v-if="currentTab === 'perfil'" class="space-y-4 pt-2">
         <div class="flex items-center gap-3.5">
-          <div class="w-12 h-12 rounded-2xl bg-[#18181B] text-white flex items-center justify-center text-base font-bold shrink-0 shadow-xs">
-            {{ user.avatar || (user.name || 'AF').slice(0, 2).toUpperCase() }}
-          </div>
           <div>
-            <div class="text-sm font-bold text-charcoal-900">{{ user.name }}</div>
+            <div class="text-base text-charcoal-700">Hola, <b class="font-bold text-charcoal-900">{{ user.name }}</b></div>
             <div class="text-xs text-charcoal-500">{{ user.role }} • {{ user.node || 'Cerro Gordo' }}</div>
           </div>
         </div>
@@ -252,21 +249,21 @@ export default {
       <div v-else-if="currentTab === 'correo'" class="space-y-4 pt-2 text-xs">
         
         <!-- Estado de Configuración -->
-        <div class="flex items-center justify-between p-3 rounded-2xl border" :class="emailForm.is_configured ? 'bg-emerald-50/70 border-emerald-200 text-emerald-800' : 'bg-amber-50/70 border-amber-200 text-amber-800'">
+        <div class="flex items-center justify-between p-3.5 rounded-2xl border border-charcoal-200 bg-offwhite text-charcoal-800">
           <div class="flex items-center gap-2">
-            <i :class="['ph', emailForm.is_configured ? 'ph-check-circle text-emerald-600' : 'ph-warning-circle text-amber-600', 'text-lg']"></i>
+            <span class="w-5 flex items-center justify-center shrink-0"><i :class="['ph text-lg', emailForm.is_configured ? 'ph-check-circle text-charcoal-400' : 'ph-warning-circle text-rose-600']"></i></span>
             <div>
-              <span class="font-bold">{{ emailForm.is_configured ? 'Servidor SMTP Listo' : 'Configuración Pendiente' }}</span>
+              <span class="font-semibold text-charcoal-900">{{ emailForm.is_configured ? 'Servidor SMTP Listo' : 'Configuración Pendiente' }}</span>
               <p class="text-[11px] opacity-90">{{ emailForm.is_configured ? 'Los reportes de asistencia se enviarán mediante esta cuenta.' : 'Ingresa los datos de tu servidor SMTP y contraseña de aplicación.' }}</p>
             </div>
           </div>
-          <span class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider" :class="emailForm.is_configured ? 'bg-emerald-200/60 text-emerald-900' : 'bg-amber-200/60 text-amber-900'">
+          <span class="text-[10px] mono-code font-semibold uppercase tracking-wider" :class="emailForm.is_configured ? 'text-charcoal-400' : 'text-rose-600'">
             {{ emailForm.is_configured ? 'Activo' : 'Incompleto' }}
           </span>
         </div>
 
         <!-- Banner de Notificación / Errores -->
-        <div v-if="emailFeedback.message" class="p-3 rounded-xl text-xs flex items-center justify-between" :class="emailFeedback.type === 'success' ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' : 'bg-rose-100 text-rose-900 border border-rose-300'">
+        <div v-if="emailFeedback.message" class="p-3 rounded-xl text-xs flex items-center justify-between" :class="emailFeedback.type === 'success' ? 'bg-charcoal-50 text-charcoal-800 border border-charcoal-200' : 'bg-rose-50 text-rose-800 border border-rose-200'">
           <div class="flex items-center gap-2">
             <i :class="['ph', emailFeedback.type === 'success' ? 'ph-check' : 'ph-x-circle', 'text-base shrink-0']"></i>
             <span>{{ emailFeedback.message }}</span>
@@ -327,7 +324,7 @@ export default {
               <button
                 type="button"
                 @click="showPassword = !showPassword"
-                class="text-[10px] text-sky-600 hover:text-sky-800 font-semibold cursor-pointer">
+                class="text-[10px] text-charcoal-500 hover:text-charcoal-900 font-semibold cursor-pointer">
                 {{ showPassword ? 'Ocultar' : 'Mostrar' }}
               </button>
             </div>
@@ -363,11 +360,11 @@ export default {
 
         <!-- Instrucción de ayuda rápida -->
         <div class="p-3 rounded-xl bg-charcoal-50 border border-charcoal-200 text-[11px] text-charcoal-600 flex items-start gap-2">
-          <i class="ph ph-info text-sky-600 text-sm shrink-0 mt-0.5"></i>
+          <i class="ph ph-info text-charcoal-400 text-sm shrink-0 mt-0.5"></i>
           <div>
             <strong>Consejo para Gmail / Workspace:</strong> Activa la verificación en dos pasos en tu cuenta de Google y genera una 
             <span class="font-mono font-bold text-charcoal-900">Contraseña de Aplicación</span> de 16 caracteres desde 
-            <span class="text-sky-700">Seguridad &gt; Contraseñas de aplicaciones</span>.
+            <span class="font-semibold text-charcoal-900">Seguridad &gt; Contraseñas de aplicaciones</span>.
           </div>
         </div>
 
@@ -408,11 +405,11 @@ export default {
       <div v-else class="space-y-4 pt-2 text-xs">
         <div class="p-3.5 rounded-2xl border border-charcoal-200 space-y-2 bg-offwhite">
           <div class="flex items-center justify-between">
-            <div class="font-bold text-charcoal-900 flex items-center gap-1.5">
-              <i class="ph ph-shield-check text-emerald-600"></i>
+            <div class="font-semibold text-charcoal-900 flex items-center gap-3">
+              <span class="w-5 flex items-center justify-center shrink-0"><i class="ph ph-funnel text-lg text-charcoal-400"></i></span>
               <span>Filtro Anti-Rebote (Debounce)</span>
             </div>
-            <span class="mono-code font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+            <span class="mono-code font-bold text-charcoal-900">
               {{ debounceVal }} seg
             </span>
           </div>

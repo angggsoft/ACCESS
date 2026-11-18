@@ -75,6 +75,7 @@ export default {
     let resizeObserver = null;
 
     const isAdminSaas = computed(() => props.user?.role_type === 'ADMIN_SAAS');
+    const userFirstName = computed(() => ((props.user?.name || '').trim().split(/\s+/)[0]) || 'Usuario');
 
     const currentModule = computed(() => {
       return MODULES_NAV.find(m => m.id === props.activeModule) || MODULES_NAV[0];
@@ -107,6 +108,10 @@ export default {
 
     function onIslandClick() {
       triggerMorph();
+      if (liveActivity.value && liveActivity.value.type === 'unnamed' && liveActivity.value.empNo) {
+        emit('quick-action', 'edit-unnamed:' + liveActivity.value.empNo);
+        return;
+      }
       if (!isAdminSaas.value) {
         emit('quick-action', 'refresh');
       }
@@ -256,6 +261,7 @@ export default {
     return {
       props,
       isAdminSaas,
+      userFirstName,
       isMenuOpen,
       menuContainerRef,
       toggleMenu,
@@ -362,7 +368,7 @@ export default {
                 </p>
                 <button
                   type="button"
-                  @click="openCreateCompany('crear')"
+                  @click="openCreateCompany('nueva_empresa')"
                   class="mt-4 px-4 py-2 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer">
                   <i class="ph ph-plus-circle"></i>
                   <span>Crear empresa</span>
@@ -402,7 +408,7 @@ export default {
                 <div class="p-2 border-t border-charcoal-100 bg-charcoal-50/50">
                   <button
                     type="button"
-                    @click="openCreateCompany('selector')"
+                    @click="openCreateCompany('empresas')"
                     class="w-full py-2 px-3 rounded-xl text-xs font-semibold text-charcoal-700 hover:bg-charcoal-100 flex items-center justify-center gap-1.5 transition-colors cursor-pointer">
                     <i class="ph ph-gear-six text-sm"></i>
                     <span>Gestionar o crear empresa</span>
@@ -450,7 +456,7 @@ export default {
                 </p>
                 <button
                   type="button"
-                  @click="openCreateCompany('selector')"
+                  @click="openCreateCompany('agregar_sucursal')"
                   class="mt-4 px-4 py-2 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer">
                   <i class="ph ph-plus-circle"></i>
                   <span>Agregar sucursal</span>
@@ -490,7 +496,7 @@ export default {
                 <div class="p-2 border-t border-charcoal-100 bg-charcoal-50/50">
                   <button
                     type="button"
-                    @click="openCreateCompany('selector')"
+                    @click="openCreateCompany('empresas')"
                     class="w-full py-2 px-3 rounded-xl text-xs font-semibold text-charcoal-700 hover:bg-charcoal-100 flex items-center justify-center gap-1.5 transition-colors cursor-pointer">
                     <i class="ph ph-plus-circle text-sm"></i>
                     <span>Administrar sucursales</span>
@@ -531,7 +537,7 @@ export default {
           :class="{ 'is-activity': !!liveActivity, 'is-morphing': isMorphing }"
           :style="{ width: pillWidth + 'px' }"
           @click="onIslandClick"
-          :title="isAdminSaas ? 'Consola Administrador SaaS' : 'Isla Dinámica — clic para actualizar datos'">
+          :title="liveActivity && liveActivity.type === 'unnamed' ? 'Clic para asignar nombre al empleado' : (isAdminSaas ? 'Consola Administrador SaaS' : 'Isla Dinámica — clic para actualizar datos')">
 
           <Transition name="island-swap">
             <div
@@ -551,13 +557,13 @@ export default {
                 class="text-[10px] mono-code text-white/90 bg-white/10 border border-white/15 px-2.5 py-0.5 rounded-full shrink-0 flex items-center gap-1.5 shadow-2xs">
                 <span
                   class="w-1.5 h-1.5 rounded-full shrink-0"
-                  :class="liveActivity.type === 'rebote' ? 'bg-amber-400' : 'bg-white shadow-[0_0_6px_rgba(255,255,255,0.85)]'"></span>
+                  :class="(liveActivity.type === 'rebote' || liveActivity.type === 'unnamed') ? 'bg-amber-400' : 'bg-white shadow-[0_0_6px_rgba(255,255,255,0.85)]'"></span>
                 <span>{{ liveActivity.clock }}</span>
               </span>
               <span
                 v-else
                 class="w-2 h-2 rounded-full shrink-0"
-                :class="liveActivity.type === 'rebote' ? 'bg-amber-400' : 'bg-white shadow-[0_0_6px_rgba(255,255,255,0.7)]'"></span>
+                :class="(liveActivity.type === 'rebote' || liveActivity.type === 'unnamed') ? 'bg-amber-400' : 'bg-white shadow-[0_0_6px_rgba(255,255,255,0.7)]'"></span>
 
               <span class="text-xs font-bold text-white tracking-tight shrink-0">{{ liveActivity.title }}</span>
               <span v-if="liveActivity.method" class="text-[10px] mono-code text-white/50 shrink-0">· {{ liveActivity.method }}</span>
@@ -565,7 +571,7 @@ export default {
               <span
                 v-if="liveActivity.badge"
                 class="text-[9px] mono-code font-bold px-2 py-0.5 rounded-full shrink-0"
-                :class="liveActivity.type === 'rebote' ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30' : 'bg-white text-charcoal-950'">
+                :class="(liveActivity.type === 'rebote' || liveActivity.type === 'unnamed') ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30' : 'bg-white text-charcoal-950'">
                 {{ liveActivity.badge }}
               </span>
             </div>
@@ -671,23 +677,21 @@ export default {
             type="button" 
             @click="toggleMenu"
             title="Perfil y configuración de usuario"
-            class="w-10 h-10 rounded-full bg-[#18181B] hover:bg-black text-white flex items-center justify-center font-bold text-xs shadow-xs hover:shadow-md transition-all cursor-pointer border border-charcoal-300 ring-2 ring-transparent hover:ring-charcoal-300">
-            <span>{{ user.avatar || 'AF' }}</span>
+            class="h-10 pl-4 pr-3 rounded-full hover:bg-charcoal-100 text-charcoal-700 flex items-center gap-2 text-sm font-medium transition-all cursor-pointer">
+            <span class="truncate max-w-[10rem]">Hola, <i class="font-semibold text-charcoal-900">{{ userFirstName }}</i></span>
+            <i class="ph ph-caret-down text-xs text-charcoal-400"></i>
           </button>
 
           <div 
             v-if="isMenuOpen"
             class="absolute right-0 top-12 mt-2 w-72 bg-white rounded-3xl shadow-xl border border-charcoal-200 p-2 z-50 animate-in fade-in zoom-in-95 duration-150">
             
-            <div class="px-3.5 py-3 border-b border-charcoal-100 flex items-center gap-3">
-              <div class="w-11 h-11 rounded-2xl bg-[#18181B] text-white flex items-center justify-center text-sm font-bold shrink-0">
-                {{ user.avatar || 'AF' }}
-              </div>
+            <div class="px-3.5 py-3 border-b border-charcoal-100">
               <div class="overflow-hidden">
-                <p class="text-sm font-bold text-charcoal-900 truncate tracking-tight">{{ user.name }}</p>
+                <p class="text-sm text-charcoal-700 truncate tracking-tight">Hola, <i class="font-semibold text-charcoal-900">{{ user.name }}</i></p>
                 <p class="text-[11px] text-charcoal-400 truncate font-medium">{{ user.role }}</p>
-                <div class="mt-1 flex items-center gap-1.5 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 w-fit">
-                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <div class="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium text-charcoal-500">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                   <span>{{ isAdminSaas ? 'ADMIN SUSCRIPCIONES' : branchName }}</span>
                 </div>
               </div>

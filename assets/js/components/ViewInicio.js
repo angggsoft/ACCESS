@@ -141,9 +141,16 @@ export default {
       return series.value.map(s => ({
         day: s.day,
         value: s.value,
-        level: s.value === 0 ? 0 : s.value / max > 0.5 ? 2 : 1
+        level: s.value === 0 ? 0 : s.value / max > 0.5 ? 2 : 1,
+        ratio: s.value / max
       }));
     });
+
+    // Matriz: todos los registros en negro y el máximo del periodo en azul Quodo
+    function heatStyle(h) {
+      if (!h.value) return {};
+      return h.ratio >= 1 ? { backgroundColor: ACCENT } : { backgroundColor: '#18181B' };
+    }
 
     return {
       firstName,
@@ -156,6 +163,7 @@ export default {
       totalPeriodo,
       chart,
       heat,
+      heatStyle,
       hoveredIndex,
       handleChartMouseMove,
       handleChartMouseLeave,
@@ -177,6 +185,7 @@ export default {
             <p class="text-sm font-bold text-charcoal-900">Checadas</p>
             <p class="text-[11px] text-charcoal-400">válidas hoy</p>
           </div>
+          <i class="ph ph-fingerprint text-2xl text-charcoal-300 ml-auto shrink-0"></i>
         </button>
         <button type="button" @click="$emit('navigate','empleados')" class="text-left bg-white rounded-3xl px-6 py-4 border border-charcoal-200 shadow-sm hover:shadow-md transition-shadow flex items-center gap-4 cursor-pointer">
           <span class="text-4xl lg:text-5xl font-black text-charcoal-900 tracking-tight leading-none">{{ empleadosPresentes }}</span>
@@ -184,6 +193,7 @@ export default {
             <p class="text-sm font-bold text-charcoal-900">Presentes</p>
             <p class="text-[11px] text-charcoal-400">de {{ employees.length }} empleados</p>
           </div>
+          <i class="ph ph-users-three text-2xl text-charcoal-300 ml-auto shrink-0"></i>
         </button>
         <button type="button" @click="$emit('navigate','relojes')" class="text-left bg-white rounded-3xl px-6 py-4 border border-charcoal-200 shadow-sm hover:shadow-md transition-shadow flex items-center gap-4 cursor-pointer">
           <span class="text-4xl lg:text-5xl font-black text-charcoal-900 tracking-tight leading-none">{{ relojesOnline }}</span>
@@ -191,6 +201,7 @@ export default {
             <p class="text-sm font-bold text-charcoal-900">Relojes</p>
             <p class="text-[11px] text-charcoal-400">en línea</p>
           </div>
+          <i class="ph ph-clock text-2xl text-charcoal-300 ml-auto shrink-0"></i>
         </button>
         <button type="button" @click="$emit('navigate','areas')" class="text-left bg-white rounded-3xl px-6 py-4 border border-charcoal-200 shadow-sm hover:shadow-md transition-shadow flex items-center gap-4 cursor-pointer">
           <span class="text-4xl lg:text-5xl font-black text-charcoal-900 tracking-tight leading-none">{{ areas.length }}</span>
@@ -198,6 +209,7 @@ export default {
             <p class="text-sm font-bold text-charcoal-900">Áreas</p>
             <p class="text-[11px] text-charcoal-400">configuradas</p>
           </div>
+          <i class="ph ph-buildings text-2xl text-charcoal-300 ml-auto shrink-0"></i>
         </button>
       </div>
 
@@ -210,7 +222,8 @@ export default {
           <div class="px-6 pt-4 pb-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <div class="flex items-center gap-2">
-                <h3 class="text-sm font-bold text-charcoal-900">Tráfico de asistencia</h3>
+                <span class="w-5 flex items-center justify-center shrink-0"><i class="ph ph-chart-line-up text-lg text-charcoal-400"></i></span>
+                <h3 class="text-sm font-semibold text-charcoal-900">Tráfico de asistencia</h3>
                 <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-charcoal-100 text-charcoal-700 mono-code">
                   {{ periodLabel }}
                 </span>
@@ -221,8 +234,8 @@ export default {
             </div>
 
             <div>
-              <div v-if="hoveredIndex !== null && totalPeriodo > 0" class="flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-sky-50 border border-sky-200 text-sky-800 text-xs font-semibold animate-in fade-in">
-                <span class="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse"></span>
+              <div v-if="hoveredIndex !== null && totalPeriodo > 0" class="flex items-center gap-1.5 px-3 py-0.5 text-charcoal-700 text-xs font-semibold animate-in fade-in">
+                <span class="w-1.5 h-1.5 rounded-full bg-charcoal-900"></span>
                 <span>{{ series[hoveredIndex].day }}: <b class="mono-code font-bold">{{ series[hoveredIndex].value }} checadas</b></span>
               </div>
               <div v-else class="text-xs text-charcoal-500">
@@ -341,10 +354,10 @@ export default {
         <div class="bg-white rounded-3xl p-5 border border-charcoal-200 shadow-sm flex flex-col justify-between">
           <div>
             <div class="flex items-center justify-between mb-1">
-              <h3 class="text-sm font-bold text-charcoal-900">Actividad reciente</h3>
+              <h3 class="text-sm font-semibold text-charcoal-900 flex items-center gap-3"><span class="w-5 flex items-center justify-center shrink-0"><i class="ph ph-pulse text-lg text-charcoal-400"></i></span><span>Actividad reciente</span></h3>
               <span
-                class="text-[10px] font-bold px-2 py-0.5 rounded border"
-                :class="devices.length === 0 ? 'bg-charcoal-100 text-charcoal-500 border-charcoal-200' : (relojesOnline > 0 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200')">
+                class="text-[11px] font-medium mono-code"
+                :class="devices.length === 0 ? 'text-charcoal-400' : (relojesOnline > 0 ? 'text-charcoal-500' : 'text-rose-600')">
                 {{ devices.length === 0 ? 'SIN RELOJES' : (relojesOnline + '/' + devices.length + ' ONLINE') }}
               </span>
             </div>
@@ -358,19 +371,9 @@ export default {
                 :key="i"
                 :title="h.day + ': ' + h.value + ' checadas'"
                 class="aspect-square rounded-lg flex items-center justify-center transition-all hover:scale-105 cursor-pointer relative group"
-                :class="h.level === 2 ? 'bg-charcoal-900 text-white' : (h.level === 1 ? 'bg-sky-500 text-white' : 'bg-charcoal-100 text-charcoal-400')">
+                :class="h.value ? 'text-white' : 'bg-charcoal-100 text-charcoal-300'"
+                :style="heatStyle(h)">
                 <span class="text-[10px] font-bold mono-code">{{ h.value || '' }}</span>
-              </div>
-            </div>
-
-            <div class="p-2.5 rounded-2xl bg-charcoal-50 border border-charcoal-200/80 text-xs space-y-1 mb-3">
-              <div class="flex justify-between text-charcoal-500">
-                <span>Filtro anti-rebote:</span>
-                <b class="text-charcoal-900 mono-code">180 seg</b>
-              </div>
-              <div class="flex justify-between text-charcoal-500">
-                <span>Terminal activa:</span>
-                <b :class="devices.length ? 'text-emerald-700 font-medium' : 'text-charcoal-400 font-medium'">{{ primaryDeviceName }}</b>
               </div>
             </div>
           </div>
@@ -380,7 +383,7 @@ export default {
             @click="$emit('navigate','reportes')"
             class="w-full text-xs font-bold bg-[#18181B] hover:bg-black text-white py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs">
             <i class="ph ph-file-csv text-base"></i>
-            <span>Ir a Pre-Nómina y Reportes</span>
+            <span>Ver pre-nómina</span>
           </button>
         </div>
 
@@ -393,7 +396,7 @@ export default {
         <div class="px-6 py-3.5 border-b border-charcoal-100 flex items-center justify-between shrink-0 bg-white">
           <div class="flex items-center gap-2.5">
             <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <h3 class="text-sm font-bold text-charcoal-900">Últimas checadas en tiempo real</h3>
+            <h3 class="text-sm font-semibold text-charcoal-900">Últimas checadas en tiempo real</h3>
             <span class="text-[11px] text-charcoal-400 mono-code font-medium">({{ recentRecords.length }} registradas)</span>
           </div>
           <button
@@ -441,7 +444,7 @@ export default {
 
                 <td class="py-3 px-4">
                   <div class="flex items-center gap-2.5">
-                    <div class="w-7 h-7 rounded-full bg-[#18181B] text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+                    <div class="w-7 h-7 rounded-full bg-charcoal-100 text-charcoal-700 flex items-center justify-center text-[10px] font-bold shrink-0">
                       {{ (rec.nombre || 'E').slice(0, 2).toUpperCase() }}
                     </div>
                     <div>
@@ -455,14 +458,8 @@ export default {
                 </td>
 
                 <td class="py-3 px-4">
-                  <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border"
-                    :class="{
-                      'bg-indigo-50 text-indigo-700 border-indigo-200': rec.metodo === 'HUELLA',
-                      'bg-emerald-50 text-emerald-700 border-emerald-200': rec.metodo === 'ROSTRO',
-                      'bg-amber-50 text-amber-700 border-amber-200': rec.metodo === 'PIN',
-                      'bg-charcoal-100 text-charcoal-800 border-charcoal-200': !['HUELLA','ROSTRO','PIN'].includes(rec.metodo)
-                    }">
-                    <i class="ph" :class="{
+                  <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-charcoal-700">
+                    <i class="ph text-charcoal-400" :class="{
                       'ph-fingerprint': rec.metodo === 'HUELLA',
                       'ph-scan-smiley': rec.metodo === 'ROSTRO',
                       'ph-password': rec.metodo === 'PIN'
@@ -478,12 +475,12 @@ export default {
                 <td class="py-3 px-6 text-right">
                   <span
                     v-if="rec.es_rebote"
-                    class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                    class="inline-flex items-center gap-1 text-[11px] font-medium text-charcoal-400">
                     <i class="ph ph-warning-circle"></i> REBOTE &lt;180s
                   </span>
                   <span
                     v-else
-                    class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    class="inline-flex items-center gap-1 text-[11px] font-semibold text-charcoal-900">
                     <i class="ph ph-check-circle"></i> VÁLIDO
                   </span>
                 </td>

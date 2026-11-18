@@ -5,6 +5,7 @@ Aislamiento de Roles (ADMIN_SAAS vs CLIENTE_RH) y Protocolo One-Way Push Hikvisi
 """
 
 import sqlite3
+import json
 import datetime
 import hashlib
 import hmac
@@ -194,7 +195,7 @@ def verify_password(password: str, stored_hash: str) -> bool:
 
 
 def get_user_subscription(user_id: int, conn: Optional[DualConnection] = None) -> Dict[str, Any]:
-    """Obtiene el estado de suscripción del usuario y evalúa si está vigente."""
+    """Obtiene el estado de suscripción del usuario, su uso real y evalúa si está vigente."""
     close_after = False
     if conn is None:
         conn = get_conn()
@@ -205,6 +206,14 @@ def get_user_subscription(user_id: int, conn: Optional[DualConnection] = None) -
         FROM suscripciones
         WHERE user_id = ?
     """, (user_id,)).fetchone()
+
+    empresas_usadas = conn.execute(
+        "SELECT COUNT(*) as c FROM empresa_usuarios WHERE user_id = ?", (user_id,)
+    ).fetchone()["c"]
+    relojes_usados = conn.execute("""
+        SELECT COUNT(*) as c FROM relojes
+        WHERE empresa_id IN (SELECT empresa_id FROM empresa_usuarios WHERE user_id = ?)
+    """, (user_id,)).fetchone()["c"]
 
     if close_after:
         conn.close()
@@ -217,7 +226,11 @@ def get_user_subscription(user_id: int, conn: Optional[DualConnection] = None) -
             "fecha_inicio": today_str,
             "fecha_vencimiento": today_str,
             "max_empresas": 3,
-            "max_relojes": 10,
+            "empresas_usadas": empresas_usadas,
+            "max_relojes": 1,
+            "relojes_usados": relojes_usados,
+            "relojes_disponibles": 0,
+            "can_add_clock": False,
             "is_active": False,
             "dias_restantes": 0,
             "notas": "Sin suscripción asignada"
@@ -236,14 +249,21 @@ def get_user_subscription(user_id: int, conn: Optional[DualConnection] = None) -
         estado = "VENCIDA"
 
     is_active = (estado in ("ACTIVA", "PRUEBA")) and (dias_restantes >= 0)
+    max_emp = int(row["max_empresas"]) if row["max_empresas"] is not None else 5
+    max_rel = int(row["max_relojes"]) if row["max_relojes"] is not None else 1
+    relojes_disponibles = max(0, max_rel - relojes_usados)
     return {
         "id": row["id"],
         "plan": row["plan"] or "MENSUAL",
         "estado": estado,
         "fecha_inicio": str(row["fecha_inicio"] or "")[:10],
         "fecha_vencimiento": exp_str,
-        "max_empresas": row["max_empresas"] or 5,
-        "max_relojes": row["max_relojes"] or 10,
+        "max_empresas": max_emp,
+        "empresas_usadas": empresas_usadas,
+        "max_relojes": max_rel,
+        "relojes_usados": relojes_usados,
+        "relojes_disponibles": relojes_disponibles,
+        "can_add_clock": bool(is_active and (relojes_usados < max_rel)),
         "is_active": is_active,
         "dias_restantes": max(0, dias_restantes),
         "notas": row["notas"] or ""
@@ -457,6 +477,7 @@ def init_db():
             area_asignada TEXT DEFAULT 'General',
             ubicacion TEXT DEFAULT 'Acceso Principal',
             webhook_token TEXT,
+            marca TEXT DEFAULT 'HIKVISION',
             estado TEXT DEFAULT 'ONLINE',
             total_eventos INTEGER DEFAULT 0,
             total_usuarios INTEGER DEFAULT 0,
@@ -468,8 +489,10 @@ def init_db():
     _ensure_column(conn, "relojes", "empresa_id", "INTEGER DEFAULT 1")
     _ensure_column(conn, "relojes", "sucursal_id", "INTEGER DEFAULT 1")
     _ensure_column(conn, "relojes", "webhook_token", "TEXT")
+    _ensure_column(conn, "relojes", "marca", "TEXT DEFAULT 'HIKVISION'")
     _ensure_column(conn, "relojes", "ultimo_serial", "INTEGER DEFAULT 0")
     _ensure_column(conn, "relojes", "ultimo_cursor", "INTEGER DEFAULT 0")
+    cur.execute("UPDATE relojes SET marca = 'HIKVISION' WHERE marca IS NULL OR marca = ''")
 
     # 8. Tabla de Áreas / Departamentos
     cur.execute("""
@@ -483,12 +506,42 @@ def init_db():
             turno TEXT,
             horario TEXT,
             tolerancia_min INTEGER DEFAULT 10,
+            dias_laborales TEXT DEFAULT '1,2,3,4,5',
             ubicacion TEXT,
             activo INTEGER DEFAULT 1
         );
     """)
     _ensure_column(conn, "areas", "empresa_id", "INTEGER DEFAULT 1")
     _ensure_column(conn, "areas", "sucursal_id", "INTEGER DEFAULT 1")
+    _ensure_column(conn, "areas", "dias_laborales", "TEXT DEFAULT '1,2,3,4,5'")
+    cur.execute("UPDATE areas SET dias_laborales = '1,2,3,4,5' WHERE dias_laborales IS NULL OR dias_laborales = ''")
+
+    if not conn.is_pg:
+        areas_ddl = cur.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='areas'").fetchone()
+        if areas_ddl and "codigo TEXT UNIQUE" in (areas_ddl["sql"] or ""):
+            cur.execute("""
+                CREATE TABLE areas_mig (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    empresa_id INTEGER DEFAULT 1,
+                    sucursal_id INTEGER DEFAULT 1,
+                    codigo TEXT,
+                    nombre TEXT NOT NULL,
+                    responsable TEXT,
+                    turno TEXT,
+                    horario TEXT,
+                    tolerancia_min INTEGER DEFAULT 10,
+                    dias_laborales TEXT DEFAULT '1,2,3,4,5',
+                    ubicacion TEXT,
+                    activo INTEGER DEFAULT 1
+                );
+            """)
+            cur.execute("""
+                INSERT INTO areas_mig (id, empresa_id, sucursal_id, codigo, nombre, responsable, turno, horario, tolerancia_min, dias_laborales, ubicacion, activo)
+                SELECT id, COALESCE(empresa_id, 1), COALESCE(sucursal_id, 1), codigo, nombre, responsable, turno, horario, COALESCE(tolerancia_min, 10), COALESCE(dias_laborales, '1,2,3,4,5'), ubicacion, COALESCE(activo, 1)
+                FROM areas
+            """)
+            cur.execute("DROP TABLE areas")
+            cur.execute("ALTER TABLE areas_mig RENAME TO areas")
 
     # 9. Tabla de Empleados
     cur.execute("""
@@ -497,6 +550,7 @@ def init_db():
             empresa_id INTEGER DEFAULT 1,
             sucursal_id INTEGER DEFAULT 1,
             codigo_empleado TEXT NOT NULL,
+            codigo_contpaqi TEXT DEFAULT '',
             nombre TEXT NOT NULL,
             area_nombre TEXT DEFAULT 'General',
             puesto TEXT DEFAULT 'Colaborador',
@@ -512,6 +566,38 @@ def init_db():
     """)
     _ensure_column(conn, "empleados", "empresa_id", "INTEGER DEFAULT 1")
     _ensure_column(conn, "empleados", "sucursal_id", "INTEGER DEFAULT 1")
+    _ensure_column(conn, "empleados", "codigo_contpaqi", "TEXT DEFAULT ''")
+
+    if not conn.is_pg:
+        emps_ddl = cur.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='empleados'").fetchone()
+        if emps_ddl and "codigo_empleado TEXT UNIQUE" in (emps_ddl["sql"] or ""):
+            cur.execute("""
+                CREATE TABLE empleados_mig (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    empresa_id INTEGER DEFAULT 1,
+                    sucursal_id INTEGER DEFAULT 1,
+                    codigo_empleado TEXT NOT NULL,
+                    codigo_contpaqi TEXT DEFAULT '',
+                    nombre TEXT NOT NULL,
+                    area_nombre TEXT DEFAULT 'General',
+                    puesto TEXT DEFAULT 'Colaborador',
+                    turno TEXT DEFAULT 'Matutino (08:00 - 17:00)',
+                    pin TEXT DEFAULT '123456',
+                    tiene_huella INTEGER DEFAULT 0,
+                    tiene_rostro INTEGER DEFAULT 0,
+                    tiene_tarjeta INTEGER DEFAULT 0,
+                    admin_ui INTEGER DEFAULT 0,
+                    reloj_asignado TEXT DEFAULT 'Cerro Gordo',
+                    estado TEXT DEFAULT 'ACTIVO'
+                );
+            """)
+            cur.execute("""
+                INSERT INTO empleados_mig (id, empresa_id, sucursal_id, codigo_empleado, codigo_contpaqi, nombre, area_nombre, puesto, turno, pin, tiene_huella, tiene_rostro, tiene_tarjeta, admin_ui, reloj_asignado, estado)
+                SELECT id, COALESCE(empresa_id, 1), COALESCE(sucursal_id, 1), codigo_empleado, COALESCE(codigo_contpaqi, ''), nombre, area_nombre, puesto, turno, pin, tiene_huella, tiene_rostro, tiene_tarjeta, admin_ui, reloj_asignado, estado
+                FROM empleados
+            """)
+            cur.execute("DROP TABLE empleados")
+            cur.execute("ALTER TABLE empleados_mig RENAME TO empleados")
 
     # 10. Tabla de Checadas
     cur.execute("""
@@ -745,66 +831,76 @@ def resolve_user_scope(user_id: int, empresa_id: Optional[int] = None, sucursal_
 def create_company_for_user(user_id: int, nombre: str, rfc: str = "", industria: str = "General", first_branch_name: str = "Sucursal Matriz") -> Dict[str, Any]:
     """Crea una nueva empresa asignando al usuario como OWNER y crea su primera sucursal."""
     conn = get_conn()
-    cur = conn.cursor()
+    try:
+        cur = conn.cursor()
 
-    clean_prefix = "".join(c for c in nombre.upper() if c.isalnum())[:5] or "EMP"
-    invite_code = f"EMP-{clean_prefix}-{secrets.token_hex(2).upper()}"
-    totp_secret = secrets.token_hex(16)
+        clean_prefix = "".join(c for c in nombre.upper() if c.isalnum())[:5] or "EMP"
+        invite_code = f"EMP-{clean_prefix}-{secrets.token_hex(2).upper()}"
+        totp_secret = secrets.token_hex(16)
 
-    cur.execute("""
-        INSERT INTO empresas (nombre, rfc, industria, codigo_invitacion, totp_secret, owner_user_id)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (nombre.strip(), rfc.strip().upper(), industria.strip(), invite_code, totp_secret, user_id))
-    emp_id = cur.lastrowid
+        cur.execute("""
+            INSERT INTO empresas (nombre, rfc, industria, codigo_invitacion, totp_secret, owner_user_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (nombre.strip(), rfc.strip().upper(), industria.strip(), invite_code, totp_secret, user_id))
+        emp_id = cur.lastrowid
 
-    cur.execute("""
-        INSERT INTO empresa_usuarios (empresa_id, user_id, rol_empresa)
-        VALUES (?, ?, 'OWNER')
-    """, (emp_id, user_id))
+        cur.execute("""
+            INSERT INTO empresa_usuarios (empresa_id, user_id, rol_empresa)
+            VALUES (?, ?, 'OWNER')
+        """, (emp_id, user_id))
 
-    cur.execute("""
-        INSERT INTO sucursales (empresa_id, codigo, nombre, ubicacion, debounce_seconds, tolerancia_minutos)
-        VALUES (?, 'SUC-01', ?, 'Acceso Principal', 180, 10)
-    """, (emp_id, first_branch_name.strip() or "Sucursal Matriz"))
-    suc_id = cur.lastrowid
+        cur.execute("""
+            INSERT INTO sucursales (empresa_id, codigo, nombre, ubicacion, debounce_seconds, tolerancia_minutos)
+            VALUES (?, 'SUC-01', ?, 'Acceso Principal', 180, 10)
+        """, (emp_id, first_branch_name.strip() or "Sucursal Matriz"))
+        suc_id = cur.lastrowid
 
-    # Crear área general inicial para la sucursal
-    cur.execute("""
-        INSERT INTO areas (empresa_id, sucursal_id, codigo, nombre, responsable, turno, horario, tolerancia_min, ubicacion)
-        VALUES (?, ?, 'AREA-GEN', 'Operaciones Generales', 'RH', 'Matutino', '08:00 - 17:00', 10, ?)
-    """, (emp_id, suc_id, first_branch_name.strip() or "Sucursal Matriz"))
+        # Crear área general inicial para la sucursal
+        cur.execute("""
+            INSERT INTO areas (empresa_id, sucursal_id, codigo, nombre, responsable, turno, horario, tolerancia_min, ubicacion)
+            VALUES (?, ?, ?, 'Operaciones Generales', 'RH', 'Matutino', '08:00 - 17:00', 10, ?)
+        """, (emp_id, suc_id, f"AREA-GEN-{suc_id}", first_branch_name.strip() or "Sucursal Matriz"))
 
-    conn.commit()
-    conn.close()
-    return {
-        "empresa_id": emp_id,
-        "sucursal_id": suc_id,
-        "nombre": nombre,
-        "codigo_invitacion": invite_code
-    }
+        conn.commit()
+        return {
+            "empresa_id": emp_id,
+            "sucursal_id": suc_id,
+            "nombre": nombre,
+            "codigo_invitacion": invite_code
+        }
+    except Exception:
+        conn._conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def create_branch_for_company(empresa_id: int, nombre: str, ubicacion: str = "", codigo: str = "", debounce_seconds: int = 180, tolerancia_minutos: int = 10) -> Dict[str, Any]:
     """Crea una nueva sucursal dentro de una empresa existente."""
     conn = get_conn()
-    cur = conn.cursor()
-    cnt = cur.execute("SELECT COUNT(*) as c FROM sucursales WHERE empresa_id = ?", (empresa_id,)).fetchone()["c"]
-    code_str = codigo.strip().upper() or f"SUC-0{cnt + 1}"
+    try:
+        cur = conn.cursor()
+        cnt = cur.execute("SELECT COUNT(*) as c FROM sucursales WHERE empresa_id = ?", (empresa_id,)).fetchone()["c"]
+        code_str = codigo.strip().upper() or f"SUC-0{cnt + 1}"
 
-    cur.execute("""
-        INSERT INTO sucursales (empresa_id, codigo, nombre, ubicacion, debounce_seconds, tolerancia_minutos)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (empresa_id, code_str, nombre.strip(), ubicacion.strip() or "Acceso Principal", int(debounce_seconds), int(tolerancia_minutos)))
-    suc_id = cur.lastrowid
+        cur.execute("""
+            INSERT INTO sucursales (empresa_id, codigo, nombre, ubicacion, debounce_seconds, tolerancia_minutos)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (empresa_id, code_str, nombre.strip(), ubicacion.strip() or "Acceso Principal", int(debounce_seconds), int(tolerancia_minutos)))
+        suc_id = cur.lastrowid
 
-    cur.execute("""
-        INSERT INTO areas (empresa_id, sucursal_id, codigo, nombre, responsable, turno, horario, tolerancia_min, ubicacion)
-        VALUES (?, ?, 'AREA-01', 'General Sucursal', 'RH', 'Matutino', '08:00 - 17:00', ?, ?)
-    """, (empresa_id, suc_id, int(tolerancia_minutos), nombre.strip()))
+        cur.execute("""
+            INSERT INTO areas (empresa_id, sucursal_id, codigo, nombre, responsable, turno, horario, tolerancia_min, ubicacion)
+            VALUES (?, ?, ?, 'General Sucursal', 'RH', 'Matutino', '08:00 - 17:00', ?, ?)
+        """, (emp_id := empresa_id, suc_id, f"AREA-01-{suc_id}", int(tolerancia_minutos), nombre.strip()))
 
-    conn.commit()
-    conn.close()
-    return {"id": suc_id, "empresa_id": empresa_id, "codigo": code_str, "nombre": nombre}
+        conn.commit()
+        return {"id": suc_id, "empresa_id": emp_id, "codigo": code_str, "nombre": nombre}
+    except Exception:
+        conn._conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def get_company_invitation_totp(user_id: int, empresa_id: int) -> Optional[Dict[str, Any]]:
@@ -875,6 +971,47 @@ def join_company_by_invite(user_id: int, codigo_invitacion: str, clave_dinamica:
     return {"ok": True, "already_member": False, "empresa_id": emp["id"], "nombre": emp["nombre"]}
 
 
+def remove_company_member(owner_user_id: int, empresa_id: int, member_user_id: int) -> Dict[str, Any]:
+    """Revoca el acceso de un miembro RH de la empresa (exclusivo del OWNER)."""
+    conn = get_conn()
+    try:
+        owner_row = conn.execute("""
+            SELECT e.id, e.owner_user_id, eu.rol_empresa
+            FROM empresas e
+            LEFT JOIN empresa_usuarios eu ON eu.empresa_id = e.id AND eu.user_id = ?
+            WHERE e.id = ? AND e.activo = 1
+        """, (owner_user_id, empresa_id)).fetchone()
+
+        if not owner_row or (
+            owner_row["rol_empresa"] != "OWNER"
+            and int(owner_row["owner_user_id"] or 0) != int(owner_user_id)
+        ):
+            return {"ok": False, "error": "Solo el creador/administrador de la empresa puede gestionar miembros."}
+
+        if int(member_user_id) == int(owner_user_id) or int(member_user_id) == int(owner_row["owner_user_id"] or 0):
+            return {"ok": False, "error": "No puedes eliminar al propietario de la empresa."}
+
+        member = conn.execute("""
+            SELECT id, rol_empresa
+            FROM empresa_usuarios
+            WHERE empresa_id = ? AND user_id = ?
+        """, (empresa_id, member_user_id)).fetchone()
+
+        if not member:
+            return {"ok": False, "error": "El usuario no pertenece a esta empresa."}
+        if member["rol_empresa"] == "OWNER":
+            return {"ok": False, "error": "No puedes eliminar al propietario de la empresa."}
+
+        conn.execute(
+            "DELETE FROM empresa_usuarios WHERE empresa_id = ? AND user_id = ?",
+            (empresa_id, member_user_id)
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
 # ==========================================
 # GESTIÓN EXCLUSIVA DEL ADMINISTRADOR SAAS (SIN ACCESO A DATOS CONFIDENCIALES)
 # ==========================================
@@ -895,10 +1032,6 @@ def admin_list_users_and_subscriptions() -> List[Dict[str, Any]]:
     result = []
     for r in rows:
         sub = get_user_subscription(r["id"], conn)
-        # Solo conteo numérico de cuota utilizada (sin nombres ni datos confidenciales)
-        empresas_count = conn.execute(
-            "SELECT COUNT(*) as c FROM empresa_usuarios WHERE user_id = ?", (r["id"],)
-        ).fetchone()["c"]
         result.append({
             "id": r["id"],
             "username": r["username"],
@@ -907,7 +1040,8 @@ def admin_list_users_and_subscriptions() -> List[Dict[str, Any]]:
             "puesto": r["rol"],
             "activo": bool(r["activo"]),
             "created_at": str(r["created_at"] or "")[:19],
-            "empresas_vinculadas_count": empresas_count,
+            "empresas_vinculadas_count": sub.get("empresas_usadas", 0),
+            "relojes_vinculados_count": sub.get("relojes_usados", 0),
             "subscription": sub
         })
     conn.close()
@@ -924,8 +1058,8 @@ def admin_create_rh_user(data: Dict[str, Any]) -> Dict[str, Any]:
     plan = (data.get("plan") or "MENSUAL").strip().upper()
     estado_sub = (data.get("estado") or "ACTIVA").strip().upper()
     dias_vigencia = int(data.get("dias_vigencia") or 30)
-    max_empresas = int(data.get("max_empresas") or 5)
-    max_relojes = int(data.get("max_relojes") or 10)
+    max_empresas = int(data["max_empresas"]) if data.get("max_empresas") is not None and str(data.get("max_empresas")).strip() != "" else 5
+    max_relojes = int(data["max_relojes"]) if data.get("max_relojes") is not None and str(data.get("max_relojes")).strip() != "" else 1
     notas = (data.get("notas") or "").strip()
 
     if not email or not nombre:
@@ -962,13 +1096,31 @@ def admin_create_rh_user(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def admin_update_user_subscription(user_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
-    """Permite al ADMIN_SAAS activar, suspender, renovar o ajustar límites de la suscripción de un usuario RH."""
+    """Permite al ADMIN_SAAS moderar cuenta, activar, suspender, renovar o ajustar límites de relojes/empresas."""
     conn = get_conn()
     cur = conn.cursor()
-    u = cur.execute("SELECT id, rol_sistema FROM usuarios_sistema WHERE id = ?", (user_id,)).fetchone()
+    u = cur.execute("SELECT id, username, email, nombre, rol, rol_sistema, activo FROM usuarios_sistema WHERE id = ?", (user_id,)).fetchone()
     if not u or u["rol_sistema"] != "CLIENTE_RH":
         conn.close()
         return {"ok": False, "error": "Usuario RH no encontrado."}
+
+    new_nombre = (data.get("nombre") or u["nombre"]).strip() if "nombre" in data and (data.get("nombre") or "").strip() else u["nombre"]
+    new_email = (data.get("email") or u["email"]).strip().lower() if "email" in data and (data.get("email") or "").strip() else u["email"]
+    new_username = (data.get("username") or u["username"]).strip().lower() if "username" in data and (data.get("username") or "").strip() else u["username"]
+    new_rol = (data.get("rol") or u["rol"]).strip() if "rol" in data and (data.get("rol") or "").strip() else u["rol"]
+
+    if new_email != u["email"].lower() or new_username != u["username"].lower():
+        dup = cur.execute(
+            "SELECT id FROM usuarios_sistema WHERE (LOWER(email) = ? OR LOWER(username) = ?) AND id != ?",
+            (new_email, new_username, user_id)
+        ).fetchone()
+        if dup:
+            conn.close()
+            return {"ok": False, "error": "Ya existe otra cuenta registrada con ese correo o username."}
+
+    cur.execute("""
+        UPDATE usuarios_sistema SET nombre = ?, email = ?, username = ?, rol = ? WHERE id = ?
+    """, (new_nombre, new_email, new_username, new_rol, user_id))
 
     if "activo" in data:
         cur.execute("UPDATE usuarios_sistema SET activo = ? WHERE id = ?", (1 if data["activo"] else 0, user_id))
@@ -979,8 +1131,8 @@ def admin_update_user_subscription(user_id: int, data: Dict[str, Any]) -> Dict[s
     plan = (data.get("plan") or sub["plan"]).strip().upper()
     estado = (data.get("estado") or sub["estado"]).strip().upper()
     fecha_vencimiento = (data.get("fecha_vencimiento") or sub["fecha_vencimiento"]).strip()[:10]
-    max_empresas = int(data.get("max_empresas") or sub["max_empresas"])
-    max_relojes = int(data.get("max_relojes") or sub["max_relojes"])
+    max_empresas = max(0, int(data["max_empresas"])) if "max_empresas" in data and data["max_empresas"] is not None and str(data["max_empresas"]).strip() != "" else sub["max_empresas"]
+    max_relojes = max(0, int(data["max_relojes"])) if "max_relojes" in data and data["max_relojes"] is not None and str(data["max_relojes"]).strip() != "" else sub["max_relojes"]
     notas = data.get("notas") if "notas" in data else sub["notas"]
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -1001,6 +1153,74 @@ def admin_update_user_subscription(user_id: int, data: Dict[str, Any]) -> Dict[s
     conn.commit()
     conn.close()
     return {"ok": True}
+
+
+def admin_delete_rh_user(user_id: int) -> Dict[str, Any]:
+    """Elimina una cuenta CLIENTE_RH junto con sus sesiones, suscripción y membresías."""
+    conn = get_conn()
+    cur = conn.cursor()
+    u = cur.execute("SELECT id, rol_sistema FROM usuarios_sistema WHERE id = ?", (user_id,)).fetchone()
+    if not u or u["rol_sistema"] != "CLIENTE_RH":
+        conn.close()
+        return {"ok": False, "error": "Usuario RH no encontrado."}
+
+    cur.execute("DELETE FROM sesiones_usuario WHERE user_id = ?", (user_id,))
+    cur.execute("DELETE FROM suscripciones WHERE user_id = ?", (user_id,))
+    cur.execute("DELETE FROM empresa_usuarios WHERE user_id = ?", (user_id,))
+    cur.execute("DELETE FROM usuarios_sistema WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+def update_user_own_account(user_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
+    """Permite al usuario autenticado actualizar su propia cuenta (nombre, correo, username, puesto, turno y contraseña)."""
+    conn = get_conn()
+    cur = conn.cursor()
+    u = cur.execute("SELECT * FROM usuarios_sistema WHERE id = ?", (user_id,)).fetchone()
+    if not u:
+        conn.close()
+        return {"ok": False, "error": "Usuario no encontrado."}
+
+    new_nombre = (data.get("nombre") or data.get("operator_name") or u["nombre"]).strip()
+    new_email = (data.get("email") or data.get("operator_email") or u["email"]).strip().lower()
+    new_username = (data.get("username") or u["username"]).strip().lower()
+    new_rol = (data.get("rol") or data.get("operator_role") or u["rol"]).strip()
+    new_turno = (data.get("turno") or data.get("operator_shift") or u["turno"]).strip()
+
+    if not new_nombre or not new_email or not new_username:
+        conn.close()
+        return {"ok": False, "error": "Nombre, correo electrónico y usuario son obligatorios."}
+
+    if new_email != u["email"].lower() or new_username != u["username"].lower():
+        dup = cur.execute(
+            "SELECT id FROM usuarios_sistema WHERE (LOWER(email) = ? OR LOWER(username) = ?) AND id != ?",
+            (new_email, new_username, user_id)
+        ).fetchone()
+        if dup:
+            conn.close()
+            return {"ok": False, "error": "Ya existe otra cuenta con ese correo electrónico o nombre de usuario."}
+
+    cur.execute("""
+        UPDATE usuarios_sistema
+        SET nombre = ?, email = ?, username = ?, rol = ?, turno = ?
+        WHERE id = ?
+    """, (new_nombre, new_email, new_username, new_rol, new_turno, user_id))
+
+    if data.get("new_password"):
+        cur.execute(
+            "UPDATE usuarios_sistema SET password_hash = ? WHERE id = ?",
+            (hash_password(str(data["new_password"]).strip()), user_id)
+        )
+
+    conn.commit()
+    updated_row = cur.execute("""
+        SELECT id, username, email, nombre, rol, rol_sistema, turno, nodo, activo
+        FROM usuarios_sistema WHERE id = ?
+    """, (user_id,)).fetchone()
+    user_dict = _build_user_dict(updated_row, conn)
+    conn.close()
+    return {"ok": True, "user": user_dict}
 
 
 # ==========================================
@@ -1037,15 +1257,19 @@ def get_areas_config_map(empresa_id: Optional[int] = None, sucursal_id: Optional
         conds.append("sucursal_id = ?")
         params.append(sucursal_id)
     where_sql = f"WHERE {' AND '.join(conds)}" if conds else ""
-    rows = conn.execute(f"SELECT nombre, horario, tolerancia_min FROM areas {where_sql}", tuple(params)).fetchall()
+    rows = conn.execute(f"SELECT nombre, horario, tolerancia_min, dias_laborales FROM areas {where_sql}", tuple(params)).fetchall()
     conn.close()
     res = {}
     for r in rows:
         t_ent, t_sal = parse_horario(r["horario"])
+        raw_dl = (r["dias_laborales"] if "dias_laborales" in r.keys() and r["dias_laborales"] else "1,2,3,4,5")
+        dias_set = {int(x.strip()) for x in str(raw_dl).split(",") if x.strip().isdigit()} or {1, 2, 3, 4, 5}
         res[r["nombre"]] = {
             "hora_entrada": t_ent,
             "hora_salida": t_sal,
-            "tolerancia_min": r["tolerancia_min"] if r["tolerancia_min"] is not None else 10
+            "tolerancia_min": r["tolerancia_min"] if r["tolerancia_min"] is not None else 10,
+            "dias_laborales": dias_set,
+            "dias_laborales_str": str(raw_dl)
         }
     return res
 
@@ -1105,6 +1329,20 @@ def get_employee_area(emp_no: str, empresa_id: int = 1, sucursal_id: Optional[in
     return row["area_nombre"] if row else "General"
 
 
+def is_default_employee_name(nombre: Optional[str], emp_no: Any = None) -> bool:
+    """Indica si el nombre corresponde a un placeholder genérico o sin nombre personalizado."""
+    clean = (nombre or "").strip().lower()
+    if not clean:
+        return True
+    if clean in ("colaborador", "desconocido", "sin nombre", "sin asignar"):
+        return True
+    if clean.startswith("empleado #") or clean.startswith("colaborador #"):
+        return True
+    if emp_no is not None and clean == str(emp_no).strip().lower():
+        return True
+    return False
+
+
 def get_employee_name(emp_no: str, fallback: str = "Desconocido", empresa_id: int = 1, sucursal_id: Optional[int] = None) -> str:
     conn = get_conn()
     if sucursal_id:
@@ -1123,41 +1361,66 @@ def get_employee_name(emp_no: str, fallback: str = "Desconocido", empresa_id: in
     return fallback
 
 
-def get_setting(key: str, default: Any = None) -> Any:
+def _is_scoped_setting_key(k: str) -> bool:
+    if ":" not in k or not k.startswith("u"):
+        return False
+    prefix = k.split(":", 1)[0][1:]
+    return prefix.isdigit()
+
+
+def get_setting(key: str, default: Any = None, user_id: Optional[int] = None) -> Any:
     conn = get_conn()
-    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    row = None
+    if user_id is not None:
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (f"u{user_id}:{key}",)).fetchone()
+    if row is None:
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
     conn.close()
     if row is not None:
         return row["value"]
     return default
 
 
-def get_all_settings() -> Dict[str, Any]:
+def get_all_settings(user_id: Optional[int] = None) -> Dict[str, Any]:
     conn = get_conn()
     rows = conn.execute("SELECT key, value FROM settings").fetchall()
     conn.close()
-    res = {r["key"]: r["value"] for r in rows}
+    res: Dict[str, Any] = {}
+    for r in rows:
+        k = r["key"]
+        if not _is_scoped_setting_key(k):
+            res[k] = r["value"]
+    if user_id is not None:
+        prefix = f"u{user_id}:"
+        for r in rows:
+            k = r["key"]
+            if k.startswith(prefix):
+                clean_k = k[len(prefix):]
+                if clean_k != "smtp_config":
+                    res[clean_k] = r["value"]
     res.setdefault("debounce_seconds", "180")
     res.setdefault("tolerancia_minutos", "10")
+    res.setdefault("notify_unnamed_employees", "1")
     return res
 
 
-def set_setting(key: str, value: Any):
+def set_setting(key: str, value: Any, user_id: Optional[int] = None):
+    db_key = f"u{user_id}:{key}" if user_id is not None else str(key)
     conn = get_conn()
     if conn.is_pg:
         conn.execute(
             "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
-            (str(key), str(value))
+            (db_key, str(value))
         )
     else:
-        conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (str(key), str(value)))
+        conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (db_key, str(value)))
     conn.commit()
     conn.close()
 
 
-def update_settings(data: Dict[str, Any]):
+def update_settings(data: Dict[str, Any], user_id: Optional[int] = None):
     for k, v in data.items():
-        set_setting(str(k), str(v))
+        set_setting(str(k), str(v), user_id=user_id)
 
 
 # ==========================================
@@ -1168,18 +1431,33 @@ def get_clock_by_webhook_token(webhook_token: Optional[str] = None, serial_or_na
     """
     Identifica el reloj checador (y su empresa_id + sucursal_id) a partir del webhook_token
     en la URL Push (/api/v1/webhooks/hikvision/{webhook_token}) o por número de serie/nombre.
+    Nunca asigna un evento a otro cliente si el token no coincide.
     """
     conn = get_conn()
     row = None
     if webhook_token:
         row = conn.execute("SELECT * FROM relojes WHERE webhook_token = ?", (webhook_token.strip(),)).fetchone()
-    if not row and serial_or_name:
+    if not row and not webhook_token and serial_or_name:
         row = conn.execute(
             "SELECT * FROM relojes WHERE serie = ? OR LOWER(nombre) = LOWER(?)",
             (serial_or_name.strip(), serial_or_name.strip())
         ).fetchone()
-    if not row:
-        row = conn.execute("SELECT * FROM relojes ORDER BY id ASC LIMIT 1").fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_clock_by_serial(serial: str) -> Optional[Dict[str, Any]]:
+    """Busca un reloj ZKTeco ADMS por su número de serie (SN)."""
+    clean_sn = (serial or "").strip()
+    if not clean_sn:
+        return None
+    conn = get_conn()
+    row = conn.execute("""
+        SELECT * FROM relojes
+        WHERE LOWER(TRIM(serie)) = LOWER(TRIM(?))
+          AND UPPER(COALESCE(marca, 'HIKVISION')) = 'ZKTECO'
+        LIMIT 1
+    """, (clean_sn,)).fetchone()
     conn.close()
     return dict(row) if row else None
 
@@ -1264,12 +1542,12 @@ def record_checkin(
             (empresa_id, sucursal_id)
         ).fetchone()
         default_area = default_area_row["nombre"] if default_area_row else "General"
-        clean_name = (nombre or "").strip() or f"Colaborador #{emp_no}"
+        clean_name = f"Empleado #{emp_no}" if is_default_employee_name(nombre, emp_no) else nombre.strip()
         cur.execute("""
             INSERT INTO empleados (
                 empresa_id, sucursal_id, codigo_empleado, nombre, area_nombre, puesto, turno,
                 pin, tiene_huella, tiene_rostro, tiene_tarjeta, admin_ui, reloj_asignado, estado
-            ) VALUES (?, ?, ?, ?, ?, 'Colaborador (Auto-Sincronizado Push)', 'Matutino (08:00 - 17:00)', '', ?, ?, ?, 0, ?, 'ACTIVO')
+            ) VALUES (?, ?, ?, ?, ?, 'Colaborador', 'Matutino (08:00 - 17:00)', '', ?, ?, ?, 0, ?, 'ACTIVO')
         """, (empresa_id, sucursal_id, str(emp_no), clean_name, default_area, is_fp, is_face, is_card, reloj_nombre))
         real_name = clean_name
         area_name = default_area
@@ -1279,7 +1557,17 @@ def record_checkin(
             (sucursal_id, reloj_id)
         )
     else:
-        real_name = emp_row["nombre"] or nombre
+        db_name = (emp_row["nombre"] or "").strip()
+        incoming_name = (nombre or "").strip()
+        if is_default_employee_name(db_name, emp_no) and not is_default_employee_name(incoming_name, emp_no):
+            cur.execute("UPDATE empleados SET nombre = ? WHERE id = ?", (incoming_name, emp_row["id"]))
+            cur.execute("""
+                UPDATE checadas SET nombre = ?
+                WHERE empresa_id = ? AND sucursal_id = ? AND codigo_empleado = ?
+            """, (incoming_name, empresa_id, sucursal_id, str(emp_no)))
+            real_name = incoming_name
+        else:
+            real_name = db_name or f"Empleado #{emp_no}"
         area_name = emp_row["area_nombre"] or "General"
         # Si checó con rostro/huella/tarjeta y no estaba marcado en la nube, actualizar indicador biométrico
         new_fp = 1 if (emp_row["tiene_huella"] or is_fp) else 0
@@ -1345,6 +1633,7 @@ def record_checkin(
         "serial_no": serial_no,
         "codigo_empleado": str(emp_no),
         "nombre": real_name,
+        "sin_nombre": is_default_employee_name(real_name, emp_no),
         "area": area_name,
         "metodo": metodo_short,
         "sub_event_type": sub_event_type,
@@ -1410,6 +1699,7 @@ def record_manual_checkin(
         "serial_no": None,
         "codigo_empleado": str(emp_no),
         "nombre": real_name,
+        "sin_nombre": is_default_employee_name(real_name, emp_no),
         "area": area_name,
         "metodo": "MANUAL",
         "sub_event_type": 0,
@@ -1480,6 +1770,7 @@ def list_checadas(limit: int = 100, empresa_id: int = 1, sucursal_id: Optional[i
             "serial_no": r["serial_no"],
             "codigo_empleado": emp_code,
             "nombre": r["nombre"],
+            "sin_nombre": is_default_employee_name(r["nombre"], emp_code),
             "area": area_res,
             "reloj_nombre": r["reloj_nombre"] or "Cerro Gordo",
             "tipo_evento": r["tipo_evento"],
@@ -1536,24 +1827,52 @@ def get_dashboard_summary(empresa_id: int = 1, sucursal_id: Optional[int] = None
     }
 
 
-def get_email_config(mask_password: bool = True) -> Dict[str, Any]:
+def _empty_email_config() -> Dict[str, Any]:
+    return {
+        "smtp_host": "smtp.gmail.com",
+        "smtp_port": 587,
+        "smtp_user": "",
+        "smtp_password": "",
+        "smtp_password_masked": "",
+        "has_password": False,
+        "smtp_security": "STARTTLS",
+        "remitente_nombre": "ACCESS - Control Biométrico",
+        "remitente_email": "",
+        "destinatario_default": "",
+        "is_configured": False
+    }
+
+
+def get_email_config(mask_password: bool = True, user_id: Optional[int] = None) -> Dict[str, Any]:
+    if user_id is not None:
+        raw_json = get_setting("smtp_config", None, user_id=user_id)
+        if not raw_json:
+            return _empty_email_config()
+        try:
+            row = json.loads(raw_json)
+        except Exception:
+            return _empty_email_config()
+        pwd = row.get("smtp_password") or ""
+        has_pwd = bool(pwd)
+        return {
+            "smtp_host": row.get("smtp_host") or "smtp.gmail.com",
+            "smtp_port": int(row.get("smtp_port") or 587),
+            "smtp_user": row.get("smtp_user") or "",
+            "smtp_password": "••••••••" if (mask_password and has_pwd) else pwd,
+            "smtp_password_masked": "••••••••" if has_pwd else "",
+            "has_password": has_pwd,
+            "smtp_security": row.get("smtp_security") or "STARTTLS",
+            "remitente_nombre": row.get("remitente_nombre") or "ACCESS - Control Biométrico",
+            "remitente_email": row.get("remitente_email") or (row.get("smtp_user") or ""),
+            "destinatario_default": row.get("destinatario_default") or "",
+            "is_configured": bool(row.get("smtp_host") and row.get("smtp_user") and has_pwd)
+        }
+
     conn = get_conn()
     row = conn.execute("SELECT * FROM config_correo WHERE id = 1").fetchone()
     conn.close()
     if not row:
-        return {
-            "smtp_host": "smtp.gmail.com",
-            "smtp_port": 587,
-            "smtp_user": "",
-            "smtp_password": "",
-            "smtp_password_masked": "",
-            "has_password": False,
-            "smtp_security": "STARTTLS",
-            "remitente_nombre": "ACCESS - Control Biométrico",
-            "remitente_email": "",
-            "destinatario_default": "",
-            "is_configured": False
-        }
+        return _empty_email_config()
     pwd = row["smtp_password"] or ""
     has_pwd = bool(pwd)
     return {
@@ -1571,13 +1890,10 @@ def get_email_config(mask_password: bool = True) -> Dict[str, Any]:
     }
 
 
-def update_email_config(data: Dict[str, Any]) -> Dict[str, Any]:
-    conn = get_conn()
-    cur = conn.cursor()
-    current = cur.execute("SELECT * FROM config_correo WHERE id = 1").fetchone()
-
+def update_email_config(data: Dict[str, Any], user_id: Optional[int] = None) -> Dict[str, Any]:
+    current = get_email_config(mask_password=False, user_id=user_id)
     new_pwd = data.get("smtp_password", "")
-    if (not new_pwd or new_pwd == "••••••••") and current and current["smtp_password"]:
+    if (not new_pwd or new_pwd == "••••••••") and current and current.get("smtp_password"):
         new_pwd = current["smtp_password"]
 
     smtp_host = (data.get("smtp_host") or "smtp.gmail.com").strip()
@@ -1589,6 +1905,23 @@ def update_email_config(data: Dict[str, Any]) -> Dict[str, Any]:
     destinatario_default = (data.get("destinatario_default") or "").strip()
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+    if user_id is not None:
+        cfg_obj = {
+            "smtp_host": smtp_host,
+            "smtp_port": smtp_port,
+            "smtp_user": smtp_user,
+            "smtp_password": new_pwd,
+            "smtp_security": smtp_security,
+            "remitente_nombre": remitente_nombre,
+            "remitente_email": remitente_email,
+            "destinatario_default": destinatario_default,
+            "updated_at": now_str
+        }
+        set_setting("smtp_config", json.dumps(cfg_obj), user_id=user_id)
+        return get_email_config(mask_password=True, user_id=user_id)
+
+    conn = get_conn()
+    cur = conn.cursor()
     cur.execute("""
         UPDATE config_correo SET
             smtp_host = ?,
@@ -2062,3 +2395,163 @@ def get_report_dataset(
             "headers": ["Código", "Área / Departamento", "Responsable", "Turno", "Horario", "Plantilla", "Con Asistencia", "Cobertura", "Checadas Válidas"],
             "data": area_rows
         }
+
+
+def generate_contpaqi_txt(
+    empresa_id: int,
+    sucursal_id: Optional[int],
+    start_date: Optional[str],
+    end_date: Optional[str],
+    tipo_periodo: str = "Quincenal",
+    numero_periodo: int = 1,
+    ejercicio: int = 2026,
+    conceptos_map: Optional[Dict[str, str]] = None
+) -> str:
+    """
+    Genera el archivo TXT de ancho fijo (Maestro-Detalle) para importar incidencias
+    a CONTPAQi Nóminas respetando posiciones absolutas (103 chars Maestro, 147 chars Detalle, CRLF).
+    """
+    cmap = {
+        "falta": "Faltas injustificadas",
+        "retardo": "Retardos",
+        "horas_extra": "Horas extras dobles"
+    }
+    if conceptos_map:
+        for k, v in conceptos_map.items():
+            if v and str(v).strip():
+                cmap[k] = str(v).strip()
+
+    today = datetime.date.today()
+    try:
+        dt_end = datetime.date.fromisoformat((end_date or "").strip()[:10]) if end_date else today
+    except ValueError:
+        dt_end = today
+    try:
+        dt_start = datetime.date.fromisoformat((start_date or "").strip()[:10]) if start_date else (dt_end - datetime.timedelta(days=14))
+    except ValueError:
+        dt_start = dt_end - datetime.timedelta(days=14)
+    if dt_start > dt_end:
+        dt_start, dt_end = dt_end, dt_start
+
+    start_str = dt_start.strftime("%Y-%m-%d")
+    end_str = dt_end.strftime("%Y-%m-%d")
+
+    date_range: List[datetime.date] = []
+    curr_d = dt_start
+    while curr_d <= dt_end:
+        date_range.append(curr_d)
+        curr_d += datetime.timedelta(days=1)
+
+    conn = get_conn()
+    emp_conds = ["empresa_id = ?", "COALESCE(estado, 'ACTIVO') = 'ACTIVO'"]
+    emp_params: List[Any] = [empresa_id]
+    if sucursal_id:
+        emp_conds.append("sucursal_id = ?")
+        emp_params.append(sucursal_id)
+
+    employees_list = conn.execute(
+        f"SELECT * FROM empleados WHERE {' AND '.join(emp_conds)} ORDER BY id ASC",
+        tuple(emp_params)
+    ).fetchall()
+
+    areas_map = get_areas_config_map(empresa_id, sucursal_id)
+    default_tol = int(get_setting("tolerancia_minutos", 10))
+    lines: List[str] = []
+
+    for emp in employees_list:
+        emp_code_bio = str(emp["codigo_empleado"]).strip()
+        c_conds = [
+            "empresa_id = ?",
+            "codigo_empleado = ?",
+            "es_rebote = 0",
+            "substr(fecha_hora_evento, 1, 10) >= ?",
+            "substr(fecha_hora_evento, 1, 10) <= ?"
+        ]
+        c_params: List[Any] = [empresa_id, emp_code_bio, start_str, end_str]
+        if sucursal_id:
+            c_conds.append("sucursal_id = ?")
+            c_params.append(sucursal_id)
+
+        chk_rows = conn.execute(
+            f"SELECT fecha_hora_evento, es_manual FROM checadas WHERE {' AND '.join(c_conds)} ORDER BY fecha_hora_evento ASC",
+            tuple(c_params)
+        ).fetchall()
+
+        days_dict: Dict[str, List[Any]] = {}
+        for r in chk_rows:
+            day_k = (r["fecha_hora_evento"] or "")[:10]
+            if day_k:
+                days_dict.setdefault(day_k, []).append(r)
+
+        area_cfg = areas_map.get(emp["area_nombre"] or "General", {})
+        hora_entrada = area_cfg.get("hora_entrada") or datetime.time(8, 0)
+        hora_salida = area_cfg.get("hora_salida") or datetime.time(17, 0)
+        tol_min = int(area_cfg.get("tolerancia_min", default_tol) if area_cfg.get("tolerancia_min") is not None else default_tol)
+        dias_laborales = area_cfg.get("dias_laborales") or {1, 2, 3, 4, 5}
+
+        emp_incidences: List[Tuple[str, float, str]] = []
+        for d in date_range:
+            day_str = d.strftime("%Y-%m-%d")
+            fecha_dd_mm_aaaa = d.strftime("%d/%m/%Y")
+            day_recs = days_dict.get(day_str, [])
+
+            if not day_recs:
+                if d.isoweekday() in dias_laborales:
+                    emp_incidences.append((cmap["falta"], 1.00, fecha_dd_mm_aaaa))
+                continue
+
+            try:
+                first_raw = (day_recs[0]["fecha_hora_evento"] or "").replace("Z", "").replace("T", " ")[:19]
+                dt_first = datetime.datetime.fromisoformat(first_raw)
+                is_manual_first = bool(day_recs[0]["es_manual"]) if "es_manual" in day_recs[0].keys() else False
+                dt_entry = datetime.datetime.combine(d, hora_entrada)
+                if not is_manual_first and dt_first > (dt_entry + datetime.timedelta(minutes=tol_min)):
+                    emp_incidences.append((cmap["retardo"], 1.00, fecha_dd_mm_aaaa))
+            except Exception:
+                pass
+
+            if len(day_recs) >= 2:
+                try:
+                    last_raw = (day_recs[-1]["fecha_hora_evento"] or "").replace("Z", "").replace("T", " ")[:19]
+                    dt_last = datetime.datetime.fromisoformat(last_raw)
+                    dt_exit = datetime.datetime.combine(d, hora_salida)
+                    extra_sec = (dt_last - dt_exit).total_seconds()
+                    if extra_sec >= 1800:
+                        extra_hours = round(extra_sec / 3600.0, 2)
+                        emp_incidences.append((cmap["horas_extra"], extra_hours, fecha_dd_mm_aaaa))
+                except Exception:
+                    pass
+
+        if not emp_incidences:
+            continue
+
+        emp_contpaqi = (emp["codigo_contpaqi"] if "codigo_contpaqi" in emp.keys() else "") or ""
+        export_code = emp_contpaqi.strip() or emp_code_bio
+        master_line = ("E" + (" " * 7) + export_code[:7].ljust(7)).ljust(103)[:103]
+        lines.append(master_line)
+
+        for concepto_desc, valor, fecha_fmt in emp_incidences:
+            detail_line = (
+                "D"
+                + " "
+                + str(tipo_periodo)[:22].ljust(22)
+                + " "
+                + str(numero_periodo)[:3].rjust(3)
+                + " "
+                + "2"
+                + (" " * 19)
+                + str(concepto_desc)[:33].ljust(33)
+                + " "
+                + f"{float(valor):.2f}"[:15].rjust(15)
+                + " "
+                + fecha_fmt[:15].ljust(15)
+                + " "
+                + str(ejercicio)[:4].ljust(4)
+                + (" " * 28)
+            )
+            lines.append(detail_line.ljust(147)[:147])
+
+    conn.close()
+    if not lines:
+        return ""
+    return "\r\n".join(lines) + "\r\n"

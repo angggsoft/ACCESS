@@ -16,7 +16,7 @@ else:
     DATABASE_URL = RAW_DATABASE_URL
 
 IS_POSTGRES = DATABASE_URL.startswith("postgresql://")
-PORT = int(os.getenv("PORT", "8000"))
+PORT = int(os.getenv("PORT", "8080"))
 ENV_MODE = os.getenv("ENV_MODE", "production" if IS_POSTGRES else "local")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
 
