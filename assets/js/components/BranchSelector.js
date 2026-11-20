@@ -1,12 +1,12 @@
 // Component: BranchSelector
-// Selector de Terminal Biométrica / Sede Activa para ACCESS COGA
+// Selector de Terminal Biométrica / Sede Activa para ACCESS
 
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 
 export default {
   name: 'BranchSelector',
   props: {
-    modelValue: { type: String, default: 'cerro-gordo' },
+    modelValue: { type: String, default: 'sucursal-matriz' },
     devices: { type: Array, default: () => [] }
   },
   emits: ['update:modelValue', 'change'],
@@ -17,19 +17,19 @@ export default {
     const nodes = computed(() => {
       const base = [
         {
-          id: 'cerro-gordo',
-          name: 'Cerro Gordo',
-          code: 'HIK-01',
-          type: 'Terminal Wi-Fi Activa',
-          subtitle: '192.168.11.71 • DS-K1T320MFWX-B',
-          desc: 'Reloj Biométrico Principal • Red Wi-Fi TBS (Online)'
+          id: 'sucursal-matriz',
+          name: 'Sucursal Matriz',
+          code: 'TERM-01',
+          type: 'Terminal Activa',
+          subtitle: 'Terminal Principal • One-Way Push',
+          desc: 'Reloj Biométrico Principal • Red Local (Online)'
         },
         {
-          id: 'cedis-leon',
-          name: 'CEDIS Matriz',
-          code: 'HIK-02',
-          type: 'Almacén Central',
-          subtitle: 'Nodo Central • Pre-Nómina',
+          id: 'sucursal-secundaria',
+          name: 'Sucursal Secundaria',
+          code: 'TERM-02',
+          type: 'Sede Adicional',
+          subtitle: 'Nodo Secundario • Pre-Nómina',
           desc: 'Consolidación de Asistencia y Kardex de Personal'
         }
       ];

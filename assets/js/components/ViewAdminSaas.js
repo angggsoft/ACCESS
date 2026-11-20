@@ -43,6 +43,7 @@ export default {
     // Modal Editar Suscripción
     const isEditModalOpen = ref(false);
     const editingUser = ref(null);
+    const showEditPassword = ref(false);
     const editForm = ref({
       nombre: '',
       email: '',
@@ -132,6 +133,7 @@ export default {
 
     function openEditSubscription(u) {
       editingUser.value = u;
+      showEditPassword.value = false;
       editForm.value = {
         nombre: u.nombre || '',
         email: u.email || '',
@@ -269,6 +271,7 @@ export default {
       saveNewUser,
       isEditModalOpen,
       editingUser,
+      showEditPassword,
       editForm,
       openEditSubscription,
       setQuickRenewal,
@@ -281,32 +284,6 @@ export default {
   },
   template: `
     <div class="w-full space-y-5 animate-in fade-in duration-150">
-
-      <!-- BANNER DE SEGURIDAD Y PRIVACIDAD CONFIDENCIAL -->
-      <div class="bg-[#18181B] text-white rounded-3xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div class="flex items-start sm:items-center gap-3.5">
-          <span class="w-5 flex items-center justify-center shrink-0"><i class="ph ph-shield-check text-lg text-emerald-400"></i></span>
-          <div>
-            <div class="flex items-center gap-2">
-              <h2 class="text-sm font-semibold tracking-tight">Consola de Administración de Cuentas y Suscripciones</h2>
-              <span class="text-[10px] mono-code font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
-                PRIVACIDAD GARANTIZADA
-              </span>
-            </div>
-            <p class="text-xs text-charcoal-300 mt-0.5">
-              Como Administrador de la plataforma gestionas el acceso y vigencia de las suscripciones de usuarios de RH. Por políticas de confidencialidad, los datos internos de empresas, sucursales, empleados y relojes están aislados y encriptados.
-            </p>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          @click="openCreateUserModal"
-          class="px-5 py-2.5 rounded-full bg-white hover:bg-charcoal-100 text-charcoal-950 text-xs font-bold flex items-center gap-2 shrink-0 cursor-pointer transition-all shadow-xs">
-          <i class="ph ph-user-plus text-base"></i>
-          <span>Nuevo Usuario RH</span>
-        </button>
-      </div>
 
       <!-- 5 KPIS DE SUSCRIPCIONES Y RELOJES -->
       <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
@@ -352,7 +329,7 @@ export default {
         </div>
       </div>
 
-      <!-- BARRA DE BÚSQUEDA Y FILTRO -->
+      <!-- BARRA DE BÚSQUEDA, FILTRO Y ALTA -->
       <div class="bg-white rounded-3xl p-4 border border-charcoal-200 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         <div class="relative flex-1 max-w-md">
           <i class="ph ph-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-charcoal-400"></i>
@@ -363,14 +340,21 @@ export default {
             class="w-full pl-10 pr-4 py-2 text-xs bg-offwhite border border-charcoal-200 rounded-full focus:outline-none focus:ring-2 focus:ring-charcoal-900">
         </div>
 
-        <div class="flex items-center gap-2">
-          <span class="text-xs font-semibold text-charcoal-500">Estatus Suscripción:</span>
+        <div class="flex items-center gap-2.5 flex-wrap">
+          <span class="text-xs font-semibold text-charcoal-500">Estatus:</span>
           <select v-model="filterStatus" class="px-3.5 py-2 rounded-full border border-charcoal-200 text-xs font-semibold bg-white">
             <option value="TODOS">Todas las Cuentas</option>
             <option value="ACTIVA">Activas</option>
             <option value="VENCIDA">Vencidas</option>
             <option value="SUSPENDIDA">Suspendidas</option>
           </select>
+          <button
+            type="button"
+            @click="openCreateUserModal"
+            class="px-4 py-2 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-2xs whitespace-nowrap">
+            <i class="ph ph-user-plus text-sm"></i>
+            <span>Nuevo Usuario RH</span>
+          </button>
         </div>
       </div>
 
@@ -492,9 +476,10 @@ export default {
       <!-- MODAL: CREAR NUEVO USUARIO RH + SUSCRIPCIÓN -->
       <ModalBase
         v-if="isCreateModalOpen"
-        title="Registrar Nuevo Cliente RH y Suscripción"
+        title="Registrar Nuevo Cliente RH"
+        subtitle="Configura las credenciales iniciales, plan de suscripción y cupo contratado."
         confirmLabel="Crear Cuenta y Activar"
-        size="md"
+        size="xl"
         @close="isCreateModalOpen = false"
         @confirm="saveNewUser">
         <div class="space-y-4 text-xs">
@@ -502,12 +487,12 @@ export default {
             <div>
               <label class="block font-bold text-charcoal-800 mb-1">Nombre Completo</label>
               <input v-model="newUserForm.nombre" type="text" placeholder="Ej: Laura Méndez"
-                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200">
+                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 bg-white focus:outline-none focus:ring-2 focus:ring-charcoal-900">
             </div>
             <div>
               <label class="block font-bold text-charcoal-800 mb-1">Correo Electrónico (Login)</label>
               <input v-model="newUserForm.email" type="email" placeholder="laura@empresa.com"
-                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 mono-code">
+                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 bg-white mono-code focus:outline-none focus:ring-2 focus:ring-charcoal-900">
             </div>
           </div>
 
@@ -515,19 +500,19 @@ export default {
             <div>
               <label class="block font-bold text-charcoal-800 mb-1">Contraseña Inicial</label>
               <input v-model="newUserForm.password" type="text"
-                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 mono-code font-bold">
+                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 bg-white mono-code font-bold focus:outline-none focus:ring-2 focus:ring-charcoal-900">
             </div>
             <div>
               <label class="block font-bold text-charcoal-800 mb-1">Puesto / Descripción</label>
               <input v-model="newUserForm.rol" type="text"
-                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200">
+                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 bg-white focus:outline-none focus:ring-2 focus:ring-charcoal-900">
             </div>
           </div>
 
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
               <label class="block font-bold text-charcoal-800 mb-1">Plan</label>
-              <select v-model="newUserForm.plan" class="w-full px-3 py-2.5 rounded-xl border border-charcoal-200 bg-white font-semibold">
+              <select v-model="newUserForm.plan" class="w-full px-3 py-2.5 rounded-xl border border-charcoal-200 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-charcoal-900">
                 <option value="MENSUAL">MENSUAL</option>
                 <option value="ANUAL ENTERPRISE">ANUAL ENTERPRISE</option>
                 <option value="PRUEBA">PRUEBA (TRIAL)</option>
@@ -536,17 +521,17 @@ export default {
             <div>
               <label class="block font-bold text-charcoal-800 mb-1">Días Vigencia</label>
               <input v-model.number="newUserForm.dias_vigencia" type="number" min="1"
-                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 mono-code font-bold">
+                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 bg-white mono-code font-bold focus:outline-none focus:ring-2 focus:ring-charcoal-900">
             </div>
             <div>
               <label class="block font-bold text-charcoal-800 mb-1">Relojes Contratados</label>
               <input v-model.number="newUserForm.max_relojes" type="number" min="0"
-                class="w-full px-3.5 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50/40 mono-code font-bold">
+                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 bg-white mono-code font-bold focus:outline-none focus:ring-2 focus:ring-charcoal-900">
             </div>
             <div>
               <label class="block font-bold text-charcoal-800 mb-1">Máx. Empresas</label>
               <input v-model.number="newUserForm.max_empresas" type="number" min="1"
-                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 mono-code font-bold">
+                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 bg-white mono-code font-bold focus:outline-none focus:ring-2 focus:ring-charcoal-900">
             </div>
           </div>
         </div>
@@ -555,135 +540,205 @@ export default {
       <!-- MODAL: MODERAR CUENTA Y SUSCRIPCIÓN DE USUARIO RH -->
       <ModalBase
         v-if="isEditModalOpen && editingUser"
-        :title="'Moderar Cuenta y Suscripción — ' + editingUser.nombre"
+        title="Moderar Cuenta y Suscripción"
+        :subtitle="'Gestión de acceso, plan y licencias — Cliente #' + editingUser.id"
         confirmLabel="Guardar Cambios"
-        size="lg"
+        size="wide"
         @close="isEditModalOpen = false"
         @confirm="saveSubscriptionChanges">
-        <div class="space-y-4 text-xs">
-          <!-- Datos de la Cuenta -->
-          <div class="p-4 rounded-2xl bg-offwhite border border-charcoal-200 space-y-3">
-            <div class="flex items-center justify-between">
-              <span class="font-bold text-charcoal-900 uppercase text-[10px] tracking-wider">Datos y Moderación de Cuenta</span>
-              <label class="flex items-center gap-2 cursor-pointer">
-                <input v-model="editForm.activo" type="checkbox" class="w-4 h-4 rounded text-charcoal-900">
-                <span class="font-bold" :class="editForm.activo ? 'text-emerald-700' : 'text-rose-700'">
-                  {{ editForm.activo ? 'Cuenta habilitada para iniciar sesión' : 'Cuenta bloqueada (sin acceso)' }}
-                </span>
-              </label>
-            </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label class="block font-bold text-charcoal-800 mb-1">Nombre Completo</label>
-                <input v-model="editForm.nombre" type="text"
-                  class="w-full px-3.5 py-2 rounded-xl border border-charcoal-200 bg-white">
-              </div>
-              <div>
-                <label class="block font-bold text-charcoal-800 mb-1">Correo Electrónico</label>
-                <input v-model="editForm.email" type="email"
-                  class="w-full px-3.5 py-2 rounded-xl border border-charcoal-200 bg-white mono-code">
-              </div>
-              <div>
-                <label class="block font-bold text-charcoal-800 mb-1">Usuario (Username)</label>
-                <input v-model="editForm.username" type="text"
-                  class="w-full px-3.5 py-2 rounded-xl border border-charcoal-200 bg-white mono-code">
-              </div>
-              <div>
-                <label class="block font-bold text-charcoal-800 mb-1">Puesto / Cargo</label>
-                <input v-model="editForm.rol" type="text"
-                  class="w-full px-3.5 py-2 rounded-xl border border-charcoal-200 bg-white">
-              </div>
-            </div>
-          </div>
 
-          <!-- Cupo de Relojes Contratados (Cobro por Reloj) -->
-          <div class="p-4 rounded-2xl bg-emerald-50/50 border border-emerald-200 space-y-2.5">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <span class="font-bold text-charcoal-900 block">Relojes Checadores Contratados (max_relojes)</span>
-                <span class="text-[11px] text-charcoal-600">
-                  Uso actual del cliente: <b class="mono-code">{{ editingUser.relojes_vinculados_count || 0 }}</b> reloj(es) registrado(s).
-                </span>
-              </div>
-              <div class="flex items-center gap-1.5">
-                <button v-for="q in [1, 3, 5, 10]" :key="q" type="button" @click="editForm.max_relojes = q"
-                  class="px-2.5 py-1 rounded-lg border text-[11px] font-bold mono-code cursor-pointer"
-                  :class="Number(editForm.max_relojes) === q ? 'bg-[#18181B] text-white border-[#18181B]' : 'bg-white text-charcoal-700 border-charcoal-200 hover:bg-charcoal-50'">
-                  {{ q }}
-                </button>
-                <button type="button" @click="editForm.max_relojes = Number(editForm.max_relojes || 0) + 1"
-                  class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold mono-code cursor-pointer">
-                  +1
-                </button>
-              </div>
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="block font-bold text-charcoal-800 mb-1">Capacidad de Relojes</label>
-                <input v-model.number="editForm.max_relojes" type="number" min="0"
-                  class="w-full px-3.5 py-2 rounded-xl border border-emerald-300 bg-white mono-code font-bold">
-              </div>
-              <div>
-                <label class="block font-bold text-charcoal-800 mb-1">Límite de Empresas</label>
-                <input v-model.number="editForm.max_empresas" type="number" min="1"
-                  class="w-full px-3.5 py-2 rounded-xl border border-charcoal-200 bg-white mono-code">
-              </div>
-            </div>
-          </div>
+        <template #footer-left>
+          <button
+            type="button"
+            @click="deleteUserAccount(editingUser)"
+            class="px-4 py-2 rounded-full text-rose-600 hover:bg-rose-50 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors">
+            <i class="ph ph-trash text-sm"></i>
+            <span>Eliminar Cuenta</span>
+          </button>
+        </template>
 
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="block font-bold text-charcoal-800 mb-1">Plan de Suscripción</label>
-              <select v-model="editForm.plan" class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 bg-white font-bold">
-                <option value="MENSUAL">MENSUAL</option>
-                <option value="ANUAL ENTERPRISE">ANUAL ENTERPRISE</option>
-                <option value="PRUEBA">PRUEBA (TRIAL)</option>
-              </select>
-            </div>
-            <div>
-              <label class="block font-bold text-charcoal-800 mb-1">Estatus de Acceso</label>
-              <select v-model="editForm.estado" class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 bg-white font-bold">
-                <option value="ACTIVA">ACTIVA (Acceso Permitido)</option>
-                <option value="SUSPENDIDA">SUSPENDIDA (Acceso Pausado)</option>
-                <option value="VENCIDA">VENCIDA (Requiere Pago)</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <div class="flex items-center justify-between mb-1">
-                <label class="font-bold text-charcoal-800">Fecha de Vencimiento</label>
-                <div class="flex items-center gap-1.5">
-                  <button type="button" @click="setQuickRenewal(30)" class="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold text-[10px] border border-emerald-200 cursor-pointer">+30d</button>
-                  <button type="button" @click="setQuickRenewal(365)" class="px-2 py-0.5 rounded bg-sky-50 text-sky-700 font-bold text-[10px] border border-sky-200 cursor-pointer">+1 año</button>
+        <div class="space-y-5 text-xs">
+          <!-- Ficha del Cliente RH (alineada al estilo de ficha de Reportes / Configuración) -->
+          <div class="p-4 rounded-2xl bg-charcoal-50/70 border border-charcoal-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="flex items-start sm:items-center gap-3 min-w-0">
+              <div class="w-9 h-9 rounded-full bg-[#18181B] text-white flex items-center justify-center text-xs font-bold shrink-0">
+                {{ (editingUser.nombre || 'U').slice(0, 2).toUpperCase() }}
+              </div>
+              <div class="min-w-0 space-y-0.5">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="font-bold text-sm text-charcoal-900 truncate">{{ editingUser.nombre }}</span>
+                  <span class="mono-code text-[11px] font-bold text-charcoal-500">#{{ editingUser.id }}</span>
+                </div>
+                <div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-charcoal-500 mono-code break-all">
+                  <span>{{ editingUser.email }}</span>
+                  <span>• @{{ editingUser.username }}</span>
                 </div>
               </div>
-              <input v-model="editForm.fecha_vencimiento" type="date"
-                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 mono-code font-bold">
             </div>
-            <div>
-              <label class="block font-bold text-charcoal-800 mb-1">Restablecer Contraseña (Opcional)</label>
-              <input v-model="editForm.new_password" type="text" placeholder="Dejar vacío para no cambiar"
-                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 mono-code">
-            </div>
-          </div>
 
-          <div>
-            <label class="block font-bold text-charcoal-800 mb-1">Notas Administrativas</label>
-            <input v-model="editForm.notas" type="text" placeholder="Ej: Factura #402 pagada"
-              class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200">
-          </div>
-
-          <div class="pt-3 border-t border-charcoal-200 flex items-center justify-between">
-            <span class="text-[11px] text-charcoal-500">Acción irreversible sobre la cuenta RH</span>
             <button
               type="button"
-              @click="deleteUserAccount(editingUser)"
-              class="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors">
-              <i class="ph ph-trash"></i>
-              <span>Eliminar Cuenta</span>
+              @click="editForm.activo = !editForm.activo"
+              class="px-3.5 py-2 rounded-xl border text-[11px] font-bold inline-flex items-center gap-2 shrink-0 self-start sm:self-center shadow-2xs cursor-pointer transition-colors"
+              :class="editForm.activo
+                ? 'bg-white border-charcoal-200 text-charcoal-900 hover:bg-charcoal-50'
+                : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100'">
+              <span class="w-2 h-2 rounded-full" :class="editForm.activo ? 'bg-emerald-500' : 'bg-rose-500'"></span>
+              <span>{{ editForm.activo ? 'Acceso habilitado' : 'Cuenta bloqueada' }}</span>
+              <i class="ph ph-arrows-left-right text-charcoal-400"></i>
             </button>
+          </div>
+
+          <!-- Distribución fluida en columnas lado a lado en escritorio -->
+          <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5 items-stretch">
+
+            <!-- Columna 1: Datos de la Cuenta -->
+            <div class="p-4 sm:p-5 rounded-2xl bg-white border border-charcoal-200 space-y-3.5 flex flex-col min-w-0">
+              <div class="flex items-center gap-2 pb-2 border-b border-charcoal-100">
+                <i class="ph ph-user-circle text-base text-charcoal-400 shrink-0"></i>
+                <span class="text-[11px] font-bold uppercase tracking-wider text-charcoal-400">
+                  Datos del Cliente RH
+                </span>
+              </div>
+
+              <div class="space-y-3 flex-1">
+                <div>
+                  <label class="block font-bold text-charcoal-800 mb-1">Nombre Completo</label>
+                  <input v-model="editForm.nombre" type="text"
+                    class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 bg-white focus:outline-none focus:ring-2 focus:ring-charcoal-900">
+                </div>
+                <div>
+                  <label class="block font-bold text-charcoal-800 mb-1">Correo Electrónico</label>
+                  <input v-model="editForm.email" type="email"
+                    class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 bg-white mono-code focus:outline-none focus:ring-2 focus:ring-charcoal-900">
+                </div>
+                <div>
+                  <label class="block font-bold text-charcoal-800 mb-1">Usuario (Username)</label>
+                  <input v-model="editForm.username" type="text"
+                    class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 bg-white mono-code focus:outline-none focus:ring-2 focus:ring-charcoal-900">
+                </div>
+                <div>
+                  <label class="block font-bold text-charcoal-800 mb-1">Puesto / Cargo</label>
+                  <input v-model="editForm.rol" type="text"
+                    class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 bg-white focus:outline-none focus:ring-2 focus:ring-charcoal-900">
+                </div>
+              </div>
+            </div>
+
+            <!-- Columna 2: Suscripción, Vigencia y Notas -->
+            <div class="p-4 sm:p-5 rounded-2xl bg-white border border-charcoal-200 space-y-3.5 flex flex-col min-w-0">
+              <div class="flex items-center gap-2 pb-2 border-b border-charcoal-100">
+                <i class="ph ph-credit-card text-base text-charcoal-400 shrink-0"></i>
+                <span class="text-[11px] font-bold uppercase tracking-wider text-charcoal-400">
+                  Suscripción y Vigencia
+                </span>
+              </div>
+
+              <div class="space-y-3 flex-1">
+                <div>
+                  <label class="block font-bold text-charcoal-800 mb-1">Plan de Suscripción</label>
+                  <select v-model="editForm.plan" class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-charcoal-900">
+                    <option value="MENSUAL">MENSUAL</option>
+                    <option value="ANUAL ENTERPRISE">ANUAL ENTERPRISE</option>
+                    <option value="PRUEBA">PRUEBA (TRIAL)</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block font-bold text-charcoal-800 mb-1">Estatus de Suscripción</label>
+                  <select v-model="editForm.estado" class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-charcoal-900">
+                    <option value="ACTIVA">ACTIVA (Acceso Permitido)</option>
+                    <option value="SUSPENDIDA">SUSPENDIDA (Acceso Pausado)</option>
+                    <option value="VENCIDA">VENCIDA (Requiere Pago)</option>
+                  </select>
+                </div>
+                <div>
+                  <div class="flex flex-wrap items-center justify-between gap-1.5 mb-1">
+                    <label class="font-bold text-charcoal-800">Fecha de Vencimiento</label>
+                    <div class="flex items-center gap-1">
+                      <button type="button" @click="setQuickRenewal(30)" class="px-2 py-0.5 rounded-md bg-charcoal-100 hover:bg-charcoal-200 text-charcoal-800 font-bold text-[10px] border border-charcoal-200 cursor-pointer transition-colors">+30d</button>
+                      <button type="button" @click="setQuickRenewal(365)" class="px-2 py-0.5 rounded-md bg-charcoal-100 hover:bg-charcoal-200 text-charcoal-800 font-bold text-[10px] border border-charcoal-200 cursor-pointer transition-colors">+1 año</button>
+                    </div>
+                  </div>
+                  <input v-model="editForm.fecha_vencimiento" type="date"
+                    class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 bg-white mono-code font-bold focus:outline-none focus:ring-2 focus:ring-charcoal-900">
+                </div>
+                <div>
+                  <label class="block font-bold text-charcoal-800 mb-1">Notas Administrativas</label>
+                  <input v-model="editForm.notas" type="text" placeholder="Ej: Factura #402 pagada"
+                    class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 bg-white focus:outline-none focus:ring-2 focus:ring-charcoal-900">
+                </div>
+              </div>
+            </div>
+
+            <!-- Columna 3: Capacidad, Cupo de Relojes/Empresas y Seguridad -->
+            <div class="md:col-span-2 xl:col-span-1 flex flex-col gap-4 min-w-0">
+              <div class="p-4 sm:p-5 rounded-2xl bg-offwhite border border-charcoal-200 space-y-3.5 flex-1">
+                <div class="flex items-center gap-2 pb-2 border-b border-charcoal-200/70">
+                  <i class="ph ph-fingerprint text-base text-charcoal-400 shrink-0"></i>
+                  <span class="text-[11px] font-bold uppercase tracking-wider text-charcoal-400">
+                    Licencias y Cupo
+                  </span>
+                </div>
+
+                <div class="space-y-2.5">
+                  <div>
+                    <span class="font-bold text-charcoal-900 block">Relojes Checadores Contratados</span>
+                    <span class="text-[11px] text-charcoal-500">
+                      Uso actual: <b class="mono-code text-charcoal-800">{{ editingUser.relojes_vinculados_count || 0 }} / {{ editForm.max_relojes ?? 0 }}</b> reloj(es) vinculado(s)
+                    </span>
+                  </div>
+
+                  <div class="flex flex-wrap items-center gap-1.5">
+                    <button v-for="q in [1, 3, 5, 10]" :key="q" type="button" @click="editForm.max_relojes = q"
+                      class="px-2.5 py-1 rounded-xl border text-[11px] font-bold mono-code cursor-pointer transition-colors"
+                      :class="Number(editForm.max_relojes) === q ? 'bg-[#18181B] text-white border-[#18181B]' : 'bg-white text-charcoal-700 border-charcoal-200 hover:bg-charcoal-100'">
+                      {{ q }}
+                    </button>
+                    <button type="button" @click="editForm.max_relojes = Number(editForm.max_relojes || 0) + 1"
+                      class="px-2.5 py-1 rounded-xl bg-white hover:bg-charcoal-100 border border-charcoal-200 text-charcoal-900 text-[11px] font-bold mono-code cursor-pointer transition-colors">
+                      +1
+                    </button>
+                  </div>
+                </div>
+
+                <div class="w-full h-1.5 rounded-full bg-charcoal-200 overflow-hidden">
+                  <div
+                    class="h-full rounded-full transition-all duration-300"
+                    :class="(editingUser.relojes_vinculados_count || 0) >= Number(editForm.max_relojes || 0) ? 'bg-rose-500' : 'bg-[#18181B]'"
+                    :style="{ width: (Number(editForm.max_relojes) > 0 ? Math.min(100, Math.round(((editingUser.relojes_vinculados_count || 0) / Number(editForm.max_relojes)) * 100)) : 100) + '%' }">
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 pt-1">
+                  <div class="min-w-0">
+                    <label class="block font-bold text-charcoal-800 mb-1">Capacidad de Relojes</label>
+                    <input v-model.number="editForm.max_relojes" type="number" min="0"
+                      class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 bg-white mono-code font-bold focus:outline-none focus:ring-2 focus:ring-charcoal-900">
+                  </div>
+                  <div class="min-w-0">
+                    <label class="block font-bold text-charcoal-800 mb-1">Límite de Empresas</label>
+                    <input v-model.number="editForm.max_empresas" type="number" min="1"
+                      class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 bg-white mono-code font-bold focus:outline-none focus:ring-2 focus:ring-charcoal-900">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Seguridad: Restablecer Contraseña -->
+              <div class="p-4 sm:p-5 rounded-2xl bg-white border border-charcoal-200 space-y-2.5">
+                <div class="flex flex-wrap items-center justify-between gap-1.5">
+                  <div class="flex items-center gap-1.5">
+                    <i class="ph ph-lock-key text-sm text-charcoal-400 shrink-0"></i>
+                    <label class="font-bold text-charcoal-800">Restablecer Contraseña (Opcional)</label>
+                  </div>
+                  <button type="button" @click="showEditPassword = !showEditPassword" class="text-[10px] text-charcoal-600 hover:text-charcoal-900 font-semibold cursor-pointer">
+                    {{ showEditPassword ? 'Ocultar' : 'Mostrar' }}
+                  </button>
+                </div>
+                <input v-model="editForm.new_password" :type="showEditPassword ? 'text' : 'password'" placeholder="Dejar vacío para no cambiar"
+                  class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 bg-white mono-code focus:outline-none focus:ring-2 focus:ring-charcoal-900">
+              </div>
+            </div>
+
           </div>
         </div>
       </ModalBase>

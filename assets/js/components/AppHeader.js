@@ -13,10 +13,10 @@ export default {
     user: {
       type: Object,
       default: () => ({
-        name: 'Angel Flores',
+        name: 'Operador RH',
         role: 'Director de RH y Operaciones',
         role_type: 'CLIENTE_RH',
-        avatar: 'AF'
+        avatar: 'RH'
       })
     },
     companyName: { type: String, default: '' },
@@ -187,6 +187,15 @@ export default {
       });
     }
 
+    function chooseAllBranches() {
+      isBranchOpen.value = false;
+      if (!activeCompanyObj.value) return;
+      emit('select-company', {
+        empresaId: activeCompanyObj.value.id,
+        sucursalId: 0
+      });
+    }
+
     function openCreateCompany(tab = 'crear') {
       isCompanyOpen.value = false;
       isBranchOpen.value = false;
@@ -279,6 +288,7 @@ export default {
       toggleBranch,
       chooseCompany,
       chooseBranch,
+      chooseAllBranches,
       openCreateCompany,
       PERIOD_OPTIONS,
       activePeriodLabel,
@@ -476,6 +486,23 @@ export default {
                 </div>
 
                 <div class="p-1.5 max-h-64 overflow-y-auto space-y-1">
+                  <button
+                    v-if="activeCompanyBranches.length > 1"
+                    type="button"
+                    @click="chooseAllBranches"
+                    class="w-full text-left px-3 py-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-between gap-2"
+                    :class="selectedBranchId === 0 ? 'bg-charcoal-900 text-white' : 'hover:bg-charcoal-50 text-charcoal-800'">
+                    <div class="min-w-0">
+                      <div class="text-xs font-bold truncate">Todas las sucursales</div>
+                      <div class="text-[10px] truncate" :class="selectedBranchId === 0 ? 'text-white/70' : 'text-charcoal-400'">
+                        Consolidado de toda la empresa
+                      </div>
+                    </div>
+                    <i v-if="selectedBranchId === 0" class="ph-fill ph-check-circle text-sm text-emerald-400 shrink-0"></i>
+                  </button>
+
+                  <div v-if="activeCompanyBranches.length > 1" class="border-t border-charcoal-100 my-1"></div>
+
                   <button
                     v-for="suc in activeCompanyBranches"
                     :key="suc.id"

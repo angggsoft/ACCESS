@@ -1,1 +1,1 @@
-"""Core package for COGA ACCESS."""
+"""Core package for ACCESS by quodo."""

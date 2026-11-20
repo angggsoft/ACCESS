@@ -91,8 +91,8 @@ export default {
     activeModule: { type: String, default: 'inicio' },
     isCollapsed: { type: Boolean, default: false },
     isAdminSaas: { type: Boolean, default: false },
-    companyName: { type: String, default: 'Quodo S.A. de C.V.' },
-    branchName: { type: String, default: 'Planta Cerro Gordo' },
+    companyName: { type: String, default: 'Mi Empresa' },
+    branchName: { type: String, default: 'Sucursal Principal' },
     branchSubtitle: { type: String, default: 'One-Way Push' }
   },
   emits: ['select-module', 'quick-action'],
@@ -145,22 +145,10 @@ export default {
 
       </div>
 
-      <!-- FOOTER DE SEDE ACTIVA EN SIDEBAR (SOLO RH) -->
-      <div v-if="!isAdminSaas && !isCollapsed" class="p-3 border-t border-charcoal-100">
-        <button
-          type="button"
-          @click="$emit('quick-action', 'modal-companies')"
-          class="w-full p-2.5 rounded-2xl bg-offwhite hover:bg-charcoal-100 border border-charcoal-200 text-left transition-all cursor-pointer group">
-          <div class="flex items-center justify-between">
-            <span class="text-[10px] font-bold uppercase tracking-wider text-charcoal-400">Empresa / Sucursal</span>
-            <i class="ph ph-caret-up-down text-xs text-charcoal-400 group-hover:text-charcoal-900"></i>
-          </div>
-          <p class="text-xs font-bold text-charcoal-900 truncate mt-0.5">{{ companyName }}</p>
-          <p class="text-[11px] text-emerald-700 font-semibold truncate flex items-center gap-1 mt-0.5">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>{{ branchName }}</span>
-          </p>
-        </button>
+      <!-- MARCA DE AGUA INFERIOR: ACCESS by quodo -->
+      <div v-show="!isCollapsed" class="px-4 py-3.5 border-t border-charcoal-100 flex items-center justify-center gap-1.5 select-none opacity-70 hover:opacity-100 transition-opacity" title="ACCESS by quodo">
+        <span class="text-[10px] font-medium tracking-wide text-charcoal-400">ACCESS by</span>
+        <img src="/assets/quodo_by.png" alt="quodo" class="h-[15px] w-auto object-contain pointer-events-none" />
       </div>
 
     </aside>

@@ -3,17 +3,19 @@
 
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import ModalBase from './ModalBase.js';
+import ScheduleBlocksEditor from './ScheduleBlocksEditor.js';
 import { confirmDialog } from './ModalConfirm.js';
 
 export default {
   name: 'ViewAreas',
-  components: { ModalBase },
+  components: { ModalBase, ScheduleBlocksEditor },
   props: {
     areas: { type: Array, default: () => [] },
+    schedules: { type: Array, default: () => [] },
     companies: { type: Array, default: () => [] },
     empresaId: { type: [Number, String, null], default: 1 },
     sucursalId: { type: [Number, String, null], default: 1 },
-    initialSection: { type: String, default: 'empresas' } // 'empresas' | 'areas' | 'invitar' | 'unirse' | 'nueva_empresa'
+    initialSection: { type: String, default: 'empresas' } // 'empresas' | 'areas' | 'horarios' | 'invitar' | 'unirse' | 'nueva_empresa'
   },
   emits: ['refresh', 'toast', 'select-scope', 'refresh-companies'],
   setup(props, { emit }) {
@@ -93,6 +95,8 @@ export default {
         activeSection.value = 'invitar';
       } else if (section === 'areas') {
         activeSection.value = 'areas';
+      } else if (section === 'horarios' || section === 'schedules') {
+        activeSection.value = 'horarios';
       } else {
         activeSection.value = 'empresas';
       }
@@ -331,17 +335,243 @@ export default {
     ];
 
     const isModalOpen = ref(false);
+    const isReapplyingRules = ref(false);
+    const isAreaScheduleDropdownOpen = ref(false);
+    const isAreaScheduleDetailVisible = ref(false);
+    const TOLERANCE_PRESETS = [0, 5, 10, 15, 20, 30];
+
     const form = ref({
       id: null,
       codigo: '',
       nombre: '',
       responsable: '',
-      turno: 'Matutino Operativo',
+      turno: 'Matutino',
+      horario_id: null,
       horario: '08:00 - 17:00',
       tolerancia_min: 10,
       dias_laborales: '1,2,3,4,5',
+      prefijo_id: '',
       ubicacion: 'Sucursal Activa'
     });
+
+    const defaultBranchScheduleId = computed(() => {
+      const list = props.schedules || [];
+      if (!list.length) return null;
+      const mat = list.find(s => String(s.nombre || '').toLowerCase().includes('matutino'));
+      return Number((mat || list[0]).id);
+    });
+
+    const justSavedSchedule = ref(null);
+
+    const selectedAreaSchedule = computed(() => {
+      const list = props.schedules || [];
+      if (form.value.horario_id && form.value.horario_id !== '__simple__') {
+        const found = list.find(s => Number(s.id) === Number(form.value.horario_id));
+        if (found) return found;
+        if (justSavedSchedule.value && Number(justSavedSchedule.value.id) === Number(form.value.horario_id)) {
+          return justSavedSchedule.value;
+        }
+      }
+      if (!list.length) return justSavedSchedule.value || null;
+      return list.find(s => Number(s.id) === Number(defaultBranchScheduleId.value)) || list[0] || null;
+    });
+
+    function toggleAreaScheduleDropdown(event) {
+      if (event) event.stopPropagation();
+      isAreaScheduleDropdownOpen.value = !isAreaScheduleDropdownOpen.value;
+    }
+
+    function toggleAreaScheduleDetail(event) {
+      if (event) event.stopPropagation();
+      isAreaScheduleDropdownOpen.value = false;
+      isAreaScheduleDetailVisible.value = !isAreaScheduleDetailVisible.value;
+    }
+
+    function selectAreaSchedule(s, event) {
+      if (event) event.stopPropagation();
+      if (!s) return;
+      form.value.horario_id = Number(s.id);
+      form.value.turno = s.nombre || 'Matutino';
+      form.value.tolerancia_min = s.tolerancia_min ?? 10;
+      isAreaScheduleDropdownOpen.value = false;
+    }
+
+    function handleGlobalClickAreaDropdown(e) {
+      if (!isAreaScheduleDropdownOpen.value) return;
+      const inside = e.target.closest && e.target.closest('[data-area-schedule-dropdown]');
+      if (!inside) {
+        isAreaScheduleDropdownOpen.value = false;
+      }
+    }
+
+    onMounted(() => window.addEventListener('click', handleGlobalClickAreaDropdown));
+    onUnmounted(() => window.removeEventListener('click', handleGlobalClickAreaDropdown));
+
+    // ==========================================
+    // SECCIÓN 2B: CATÁLOGO DE HORARIOS FLEXIBLES
+    // ==========================================
+    const isScheduleModalOpen = ref(false);
+    const isSavingSchedule = ref(false);
+    const returnToAreaModal = ref(false);
+    const scheduleForm = ref({
+      id: null,
+      nombre: '',
+      descripcion: '',
+      tolerancia_min: 10,
+      bloques: []
+    });
+
+    function setScheduleTolerance(val) {
+      const clamped = Math.max(0, Math.min(180, Math.round(Number(val) || 0)));
+      scheduleForm.value.tolerancia_min = clamped;
+    }
+
+    function stepScheduleTolerance(delta) {
+      setScheduleTolerance((Number(scheduleForm.value.tolerancia_min) || 0) + delta);
+    }
+
+    function defaultStandardBlocks() {
+      return [1, 2, 3, 4, 5].map(d => ({
+        dia_semana: d,
+        orden_bloque: 1,
+        hora_entrada: '08:00',
+        hora_salida: '17:00'
+      }));
+    }
+
+    function openNewSchedule(fromAreaModal = false) {
+      if (!fromAreaModal) {
+        activeSection.value = 'horarios';
+        returnToAreaModal.value = false;
+      }
+      isAreaScheduleDropdownOpen.value = false;
+      scheduleForm.value = {
+        id: null,
+        nombre: '',
+        descripcion: '',
+        tolerancia_min: 10,
+        bloques: defaultStandardBlocks()
+      };
+      if (fromAreaModal && isModalOpen.value) {
+        returnToAreaModal.value = true;
+        isModalOpen.value = false;
+      }
+      isScheduleModalOpen.value = true;
+    }
+
+    function openNewScheduleFromArea(event) {
+      if (event) event.stopPropagation();
+      openNewSchedule(true);
+    }
+
+    function editSchedule(s, event) {
+      if (event) event.stopPropagation();
+      if (!s) return;
+      isAreaScheduleDropdownOpen.value = false;
+      const cameFromArea = Boolean(isModalOpen.value);
+      scheduleForm.value = {
+        id: s.id,
+        nombre: s.nombre || '',
+        descripcion: s.descripcion || '',
+        tolerancia_min: s.tolerancia_min ?? 10,
+        bloques: (s.bloques || []).map(b => ({
+          dia_semana: Number(b.dia_semana),
+          orden_bloque: Number(b.orden_bloque || 1),
+          hora_entrada: String(b.hora_entrada || '08:00').slice(0, 5),
+          hora_salida: String(b.hora_salida || '17:00').slice(0, 5)
+        }))
+      };
+      if (cameFromArea) {
+        returnToAreaModal.value = true;
+        isModalOpen.value = false;
+      } else {
+        returnToAreaModal.value = false;
+      }
+      isScheduleModalOpen.value = true;
+    }
+
+    function closeScheduleModal() {
+      isScheduleModalOpen.value = false;
+      if (returnToAreaModal.value) {
+        returnToAreaModal.value = false;
+        isModalOpen.value = true;
+      }
+    }
+
+    async function saveSchedule() {
+      if (!scheduleForm.value.nombre.trim()) {
+        emit('toast', 'El nombre del horario es obligatorio', 'error');
+        return;
+      }
+      isSavingSchedule.value = true;
+      try {
+        const res = await fetch('/api/schedules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...scheduleForm.value,
+            es_plantilla: 1,
+            empresa_id: props.empresaId,
+            sucursal_id: props.sucursalId
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          emit('toast', data.message || 'Horario guardado correctamente');
+          if (data.schedule && data.schedule.id) {
+            justSavedSchedule.value = data.schedule;
+            if (returnToAreaModal.value || isModalOpen.value) {
+              form.value.horario_id = Number(data.schedule.id);
+              form.value.turno = data.schedule.nombre || form.value.turno;
+              form.value.tolerancia_min = data.schedule.tolerancia_min ?? form.value.tolerancia_min;
+            }
+          }
+          isScheduleModalOpen.value = false;
+          if (returnToAreaModal.value) {
+            returnToAreaModal.value = false;
+            isModalOpen.value = true;
+          }
+          emit('refresh');
+        } else {
+          emit('toast', data.detail || 'No se pudo guardar el horario', 'error');
+        }
+      } catch (e) {
+        emit('toast', 'Error de red al guardar el horario', 'error');
+      } finally {
+        isSavingSchedule.value = false;
+      }
+    }
+
+    async function deleteSchedule(s) {
+      const ok = await confirmDialog({
+        title: '¿Eliminar esta plantilla de horario?',
+        message: `Se eliminará "${s.nombre}" de la sucursal.`,
+        detail: s.empleados_count > 0
+          ? `${s.empleados_count} colaborador(es) asignados pasarán automáticamente a heredar el horario de su área.`
+          : 'Esta acción no se puede deshacer.',
+        variant: 'danger',
+        confirmLabel: 'Eliminar horario'
+      });
+      if (!ok) return;
+      try {
+        const res = await fetch(`/api/schedules/${s.id}`, { method: 'DELETE' });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          emit('toast', data.message || `Horario '${s.nombre}' eliminado`);
+          emit('refresh');
+        } else {
+          emit('toast', data.detail || 'No se pudo eliminar el horario', 'error');
+        }
+      } catch (e) {
+        emit('toast', 'Error de red al eliminar el horario', 'error');
+      }
+    }
+
+    function formatDayBlocksSummary(s, dayNum) {
+      const list = (s?.bloques_por_dia && s.bloques_por_dia[String(dayNum)]) || [];
+      if (!list.length) return 'Descanso';
+      return list.map(b => `${b.hora_entrada}-${b.hora_salida}`).join(', ');
+    }
 
     function isWorkDaySelected(dayNum) {
       const list = String(form.value.dias_laborales || '1,2,3,4,5').split(',').map(x => x.trim());
@@ -370,26 +600,76 @@ export default {
 
     function openNewArea() {
       activeSection.value = 'areas';
+      isAreaScheduleDropdownOpen.value = false;
+      const defSched = (props.schedules || []).find(s => Number(s.id) === Number(defaultBranchScheduleId.value)) || (props.schedules || [])[0] || null;
       form.value = {
         id: null,
         codigo: `AREA-0${props.areas.length + 1}`,
         nombre: '',
         responsable: '',
-        turno: 'Matutino',
+        turno: defSched?.nombre || 'Matutino',
+        horario_id: defSched ? Number(defSched.id) : defaultBranchScheduleId.value,
         horario: '08:00 - 17:00',
-        tolerancia_min: 10,
+        tolerancia_min: defSched?.tolerancia_min ?? 10,
         dias_laborales: '1,2,3,4,5',
+        prefijo_id: '',
         ubicacion: activeBranch.value?.nombre || 'Sucursal Activa'
       };
       isModalOpen.value = true;
     }
 
     function editArea(a) {
+      isAreaScheduleDropdownOpen.value = false;
+      const hasLinked = a.horario_id && (props.schedules || []).some(s => Number(s.id) === Number(a.horario_id));
+      const targetSchedId = hasLinked ? Number(a.horario_id) : defaultBranchScheduleId.value;
+      const linkedSched = (props.schedules || []).find(s => Number(s.id) === Number(targetSchedId)) || null;
+      const quickHorario = (a.hora_entrada && a.hora_salida) ? `${a.hora_entrada} - ${a.hora_salida}` : '08:00 - 17:00';
       form.value = {
         ...a,
-        dias_laborales: a.dias_laborales || '1,2,3,4,5'
+        turno: linkedSched?.nombre || a.turno || 'Matutino',
+        horario_id: targetSchedId,
+        horario: (a.horario && !String(a.horario).startsWith('Mixto')) ? a.horario : quickHorario,
+        dias_laborales: a.dias_laborales || '1,2,3,4,5',
+        prefijo_id: a.prefijo_id || ''
       };
       isModalOpen.value = true;
+    }
+
+    async function reapplyRules() {
+      if (!props.areas.length) {
+        emit('toast', 'Crea al menos un área antes de re-aplicar reglas.', 'error');
+        return;
+      }
+      const ok = await confirmDialog({
+        title: '¿Re-aplicar reglas de área a empleados?',
+        message: `Se reasignará el área de todos los empleados y checadas de "${activeBranch.value?.nombre || 'la sucursal activa'}" usando la cascada configurada.`,
+        detail: 'Orden: 1) Prefijos de ID configurados en cada área, 2) Área asignada al reloj, 3) Primera área activa de la sucursal.',
+        confirmLabel: 'Re-aplicar reglas'
+      });
+      if (!ok) return;
+
+      isReapplyingRules.value = true;
+      try {
+        const res = await fetch('/api/areas/reapply-rules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: props.empresaId,
+            sucursal_id: props.sucursalId
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          emit('toast', data.message || 'Reglas aplicadas correctamente');
+          emit('refresh');
+        } else {
+          emit('toast', data.detail || 'No se pudieron re-aplicar las reglas', 'error');
+        }
+      } catch (e) {
+        emit('toast', 'Error de red al re-aplicar reglas', 'error');
+      } finally {
+        isReapplyingRules.value = false;
+      }
     }
 
     async function saveArea() {
@@ -398,14 +678,18 @@ export default {
         return;
       }
       try {
+        const chosenSched = selectedAreaSchedule.value;
+        const payload = {
+          ...form.value,
+          turno: chosenSched?.nombre || form.value.turno || 'Matutino',
+          horario_id: chosenSched ? Number(chosenSched.id) : (form.value.horario_id || '__simple__'),
+          empresa_id: props.empresaId,
+          sucursal_id: props.sucursalId
+        };
         const res = await fetch('/api/areas', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...form.value,
-            empresa_id: props.empresaId,
-            sucursal_id: props.sucursalId
-          })
+          body: JSON.stringify(payload)
         });
         const data = await res.json();
         if (res.ok) {
@@ -463,13 +747,36 @@ export default {
       selectCompanyAndBranch,
       configureBranchAreas,
       WEEK_DAYS,
+      TOLERANCE_PRESETS,
       isModalOpen,
+      isReapplyingRules,
+      isAreaScheduleDropdownOpen,
+      isAreaScheduleDetailVisible,
+      toggleAreaScheduleDropdown,
+      toggleAreaScheduleDetail,
+      selectAreaSchedule,
       form,
+      defaultBranchScheduleId,
+      selectedAreaSchedule,
+      isScheduleModalOpen,
+      isSavingSchedule,
+      returnToAreaModal,
+      scheduleForm,
+      setScheduleTolerance,
+      stepScheduleTolerance,
+      openNewSchedule,
+      openNewScheduleFromArea,
+      editSchedule,
+      closeScheduleModal,
+      saveSchedule,
+      deleteSchedule,
+      formatDayBlocksSummary,
       isWorkDaySelected,
       toggleWorkDay,
       formatWorkDays,
       openNewArea,
       editArea,
+      reapplyRules,
       saveArea,
       deleteArea
     };
@@ -483,19 +790,19 @@ export default {
           <button
             type="button"
             @click="setSection('empresas')"
-            class="px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+            class="px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap"
             :class="activeSection === 'empresas' ? 'bg-[#18181B] text-white' : 'text-charcoal-600 hover:bg-charcoal-100'">
-            <i class="ph ph-buildings text-base"></i>
+            <span class="w-5 flex items-center justify-center shrink-0"><i class="ph ph-buildings text-base" :class="activeSection === 'empresas' ? 'text-white' : 'text-charcoal-400'"></i></span>
             <span>Empresas y Sucursales</span>
           </button>
 
           <button
             type="button"
             @click="setSection('areas')"
-            class="px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+            class="px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap"
             :class="activeSection === 'areas' ? 'bg-[#18181B] text-white' : 'text-charcoal-600 hover:bg-charcoal-100'">
-            <i class="ph ph-clock-user text-base"></i>
-            <span>Áreas, Turnos y Horarios</span>
+            <span class="w-5 flex items-center justify-center shrink-0"><i class="ph ph-clock-user text-base" :class="activeSection === 'areas' ? 'text-white' : 'text-charcoal-400'"></i></span>
+            <span>Áreas</span>
             <span class="text-[10px] mono-code px-1.5 py-0.5 rounded-full"
               :class="activeSection === 'areas' ? 'bg-white/20 text-white' : 'bg-charcoal-100 text-charcoal-700'">
               {{ areas.length }}
@@ -504,10 +811,23 @@ export default {
 
           <button
             type="button"
+            @click="setSection('horarios')"
+            class="px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap"
+            :class="activeSection === 'horarios' ? 'bg-[#18181B] text-white' : 'text-charcoal-600 hover:bg-charcoal-100'">
+            <span class="w-5 flex items-center justify-center shrink-0"><i class="ph ph-calendar-check text-base" :class="activeSection === 'horarios' ? 'text-white' : 'text-charcoal-400'"></i></span>
+            <span>Horarios y Turnos</span>
+            <span class="text-[10px] mono-code px-1.5 py-0.5 rounded-full"
+              :class="activeSection === 'horarios' ? 'bg-white/20 text-white' : 'bg-charcoal-100 text-charcoal-700'">
+              {{ schedules.length }}
+            </span>
+          </button>
+
+          <button
+            type="button"
             @click="setSection('invitar')"
-            class="px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+            class="px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap"
             :class="activeSection === 'invitar' ? 'bg-[#18181B] text-white' : 'text-charcoal-600 hover:bg-charcoal-100'">
-            <i class="ph ph-users-three text-base"></i>
+            <span class="w-5 flex items-center justify-center shrink-0"><i class="ph ph-users-three text-base" :class="activeSection === 'invitar' ? 'text-white' : 'text-charcoal-400'"></i></span>
             <span>Equipo y Acceso (Código)</span>
             <span v-if="activeCompany" class="text-[10px] mono-code px-1.5 py-0.5 rounded-full"
               :class="activeSection === 'invitar' ? 'bg-white/20 text-white' : 'bg-charcoal-100 text-charcoal-700'">
@@ -518,9 +838,9 @@ export default {
           <button
             type="button"
             @click="setSection('nueva_empresa')"
-            class="px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+            class="px-4 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap"
             :class="activeSection === 'nueva_empresa' ? 'bg-[#18181B] text-white' : 'text-charcoal-600 hover:bg-charcoal-100'">
-            <i class="ph ph-plus-circle text-base"></i>
+            <span class="w-5 flex items-center justify-center shrink-0"><i class="ph ph-plus-circle text-base" :class="activeSection === 'nueva_empresa' ? 'text-white' : 'text-charcoal-400'"></i></span>
             <span>Nueva Empresa</span>
           </button>
         </div>
@@ -620,8 +940,8 @@ export default {
                   : 'bg-offwhite hover:bg-charcoal-50 text-charcoal-900 border-charcoal-200'">
                 <div class="flex items-start justify-between gap-2">
                   <div>
-                    <div class="font-bold text-xs flex items-center gap-1.5">
-                      <i class="ph ph-map-pin"></i>
+                    <div class="font-bold text-xs flex items-center gap-2">
+                      <span class="w-4 flex items-center justify-center shrink-0"><i class="ph ph-map-pin text-sm text-charcoal-400"></i></span>
                       <span>{{ suc.nombre }}</span>
                     </div>
                     <p class="text-[10px] mt-1 text-charcoal-500">
@@ -638,8 +958,8 @@ export default {
                   <button
                     type="button"
                     @click.stop="configureBranchAreas(comp.id, suc.id)"
-                    class="text-[11px] font-semibold flex items-center gap-1 cursor-pointer text-charcoal-600 hover:text-charcoal-900">
-                    <i class="ph ph-clock-user"></i>
+                    class="text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer text-charcoal-600 hover:text-charcoal-900">
+                    <i class="ph ph-clock-user text-sm text-charcoal-400"></i>
                     <span>Áreas y Turnos</span>
                   </button>
                 </div>
@@ -693,13 +1013,23 @@ export default {
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            @click="openNewArea"
-            class="px-4 py-2 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-1.5 shrink-0 cursor-pointer">
-            <i class="ph ph-plus-circle text-sm"></i>
-            <span>Nueva Área / Turno</span>
-          </button>
+          <div class="flex items-center gap-2 flex-wrap shrink-0">
+            <button
+              type="button"
+              :disabled="isReapplyingRules || !areas.length"
+              @click="reapplyRules"
+              class="px-4 py-2 rounded-full bg-charcoal-100 hover:bg-charcoal-200 disabled:opacity-50 text-charcoal-900 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors">
+              <i :class="['ph text-sm', isReapplyingRules ? 'ph-spinner animate-spin' : 'ph-arrows-clockwise']"></i>
+              <span>{{ isReapplyingRules ? 'Aplicando...' : 'Re-aplicar reglas a empleados' }}</span>
+            </button>
+            <button
+              type="button"
+              @click="openNewArea"
+              class="px-4 py-2 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer">
+              <i class="ph ph-plus-circle text-sm"></i>
+              <span>Nueva Área / Turno</span>
+            </button>
+          </div>
         </div>
 
         <!-- ESTADO VACÍO: SIN ÁREAS -->
@@ -751,17 +1081,26 @@ export default {
                   <span class="text-[10px] font-bold uppercase text-charcoal-400 block">Ubicación / Sede</span>
                   <span class="font-semibold text-charcoal-700">{{ a.ubicacion }}</span>
                 </div>
-                <div>
-                  <span class="text-[10px] font-bold uppercase text-charcoal-400 block">Turno y Horario</span>
-                  <span class="font-bold text-charcoal-900 mono-code">{{ a.turno }} ({{ a.horario }})</span>
+                <div class="col-span-2 sm:col-span-1">
+                  <span class="text-[10px] font-bold uppercase text-charcoal-400 block">Horario Base</span>
+                  <span class="font-bold text-charcoal-900 block">{{ a.horario_nombre || a.turno }}</span>
+                  <span class="font-semibold text-charcoal-700 mono-code text-[11px]">{{ a.horario_resumen || a.horario }}</span>
                 </div>
                 <div>
                   <span class="text-[10px] font-bold uppercase text-charcoal-400 block">Tolerancia Entrada</span>
                   <span class="font-bold text-emerald-700 mono-code">{{ a.tolerancia_min }} minutos</span>
                 </div>
+                <div v-if="a.horario_es_mixto && a.horario_detalle" class="col-span-2">
+                  <span class="text-[10px] font-bold uppercase text-charcoal-400 block">Desglose Semanal</span>
+                  <span class="font-medium text-charcoal-700 mono-code text-[11px]">{{ a.horario_detalle }}</span>
+                </div>
                 <div class="col-span-2">
                   <span class="text-[10px] font-bold uppercase text-charcoal-400 block">Días Laborales (Pre-Nómina)</span>
                   <span class="font-semibold text-charcoal-800">{{ formatWorkDays(a.dias_laborales) }}</span>
+                </div>
+                <div v-if="a.prefijo_id" class="col-span-2">
+                  <span class="text-[10px] font-bold uppercase text-charcoal-400 block">Prefijos de Auto-Asignación</span>
+                  <span class="font-bold text-charcoal-900 mono-code">{{ a.prefijo_id }}</span>
                 </div>
               </div>
             </div>
@@ -779,6 +1118,135 @@ export default {
                 class="px-3 py-1.5 rounded-full text-red-600 hover:bg-red-50 text-xs font-semibold cursor-pointer">
                 <i class="ph ph-trash"></i>
               </button>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= TAB 2B: CATÁLOGO DE HORARIOS FLEXIBLES ================= -->
+      <div v-else-if="activeSection === 'horarios'" class="space-y-5">
+        <div class="bg-white rounded-3xl px-6 py-4 border border-charcoal-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex items-center gap-3 min-w-0">
+            <span class="w-5 flex items-center justify-center shrink-0">
+              <i class="ph ph-calendar-check text-lg text-charcoal-400"></i>
+            </span>
+            <div class="min-w-0">
+              <h3 class="text-sm font-semibold text-charcoal-900">Horarios y Jornadas Flexibles</h3>
+              <p class="text-[11px] text-charcoal-400">
+                Plantillas fijas, parciales o mixtas multi-bloque reutilizables por área o colaborador en <b class="text-charcoal-700">{{ activeBranch?.nombre || 'la sucursal activa' }}</b>
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            @click="openNewSchedule"
+            class="px-4 py-2 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shrink-0">
+            <i class="ph ph-plus-circle text-sm"></i>
+            <span>Nuevo Horario</span>
+          </button>
+        </div>
+
+        <div v-if="!schedules.length" class="flex-1 bg-white rounded-3xl p-10 border border-charcoal-200 shadow-sm text-center flex flex-col items-center justify-center min-h-[280px]">
+          <i class="ph ph-calendar-check text-5xl text-charcoal-300 mb-3"></i>
+          <h3 class="text-sm font-semibold text-charcoal-900">Aún no hay plantillas de horario registradas</h3>
+          <p class="text-xs text-charcoal-500 mt-1.5 max-w-md leading-relaxed">
+            Crea horarios fijos, partidos o mixtos por día de la semana para asignarlos a áreas o a colaboradores específicos.
+          </p>
+          <button
+            type="button"
+            @click="openNewSchedule"
+            class="mt-5 px-5 py-2.5 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold flex items-center gap-2 cursor-pointer transition-all shadow-xs">
+            <i class="ph ph-plus-circle text-base"></i>
+            <span>Crear Primer Horario</span>
+          </button>
+        </div>
+
+        <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+          <div
+            v-for="s in schedules"
+            :key="s.id"
+            class="bg-white rounded-3xl p-5 border border-charcoal-200 shadow-sm flex flex-col justify-between gap-4">
+
+            <div class="space-y-3.5">
+              <!-- Encabezado compacto alineado al diseño general -->
+              <div class="flex items-start justify-between gap-2.5">
+                <div class="flex items-center gap-3 min-w-0">
+                  <span class="w-5 flex items-center justify-center shrink-0">
+                    <i class="ph ph-calendar-check text-lg text-charcoal-400"></i>
+                  </span>
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <h3 class="text-sm font-semibold text-charcoal-900 truncate">{{ s.nombre }}</h3>
+                      <span
+                        v-if="Number(s.id) === Number(defaultBranchScheduleId)"
+                        class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        Por defecto
+                      </span>
+                    </div>
+                    <p v-if="s.descripcion" class="text-[11px] text-charcoal-500 mt-0.5 truncate">{{ s.descripcion }}</p>
+                  </div>
+                </div>
+
+                <span
+                  class="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider mono-code shrink-0"
+                  :class="s.es_mixto ? 'bg-[#18181B] text-white' : 'bg-charcoal-100 text-charcoal-700'">
+                  {{ s.es_mixto ? 'Mixto' : 'Fijo' }}
+                </span>
+              </div>
+
+              <!-- Resumen limpio de la jornada -->
+              <div class="p-3.5 rounded-2xl bg-offwhite border border-charcoal-200/70 space-y-2.5">
+                <div class="text-xs mono-code font-bold text-charcoal-900 leading-relaxed">
+                  {{ s.resumen_detalle || s.resumen_corto }}
+                </div>
+
+                <div class="flex items-center justify-between gap-2 pt-2 border-t border-charcoal-200/60 text-[11px]">
+                  <!-- Indicador compacto Lun-Dom -->
+                  <div class="flex items-center gap-1">
+                    <span
+                      v-for="d in WEEK_DAYS"
+                      :key="d.num"
+                      :title="d.label + ': ' + formatDayBlocksSummary(s, d.num)"
+                      class="w-5 h-5 rounded-md text-[10px] font-bold flex items-center justify-center"
+                      :class="formatDayBlocksSummary(s, d.num) === 'Descanso'
+                        ? 'bg-charcoal-100/80 text-charcoal-400'
+                        : 'bg-[#18181B] text-white'">
+                      {{ d.label.slice(0, 1) }}
+                    </span>
+                  </div>
+
+                  <div class="flex items-center gap-2 mono-code text-[11px]">
+                    <span class="font-bold text-charcoal-900">{{ s.horas_semanales }}h/sem</span>
+                    <span class="text-charcoal-300">·</span>
+                    <span class="font-bold text-emerald-700">{{ s.tolerancia_min }}m tol.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Pie con asignación y acciones -->
+            <div class="pt-3 border-t border-charcoal-100 flex items-center justify-between gap-2">
+              <span class="text-[11px] text-charcoal-500 mono-code">
+                {{ s.areas_count || 0 }} área(s) · {{ s.empleados_count || 0 }} colab.
+              </span>
+
+              <div class="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  @click="editSchedule(s)"
+                  class="px-3.5 py-1.5 rounded-full bg-charcoal-100 hover:bg-charcoal-200 text-charcoal-800 text-xs font-semibold cursor-pointer">
+                  <i class="ph ph-pencil-simple"></i> Editar
+                </button>
+                <button
+                  type="button"
+                  :disabled="schedules.length <= 1"
+                  :title="schedules.length <= 1 ? 'Siempre debe existir al menos un horario en la sucursal' : 'Eliminar horario'"
+                  @click="deleteSchedule(s)"
+                  class="px-2.5 py-1.5 rounded-full text-red-600 hover:bg-red-50 disabled:opacity-35 disabled:cursor-not-allowed text-xs font-semibold cursor-pointer">
+                  <i class="ph ph-trash"></i>
+                </button>
+              </div>
             </div>
 
           </div>
@@ -1012,75 +1480,318 @@ export default {
         </div>
       </div>
 
-      <!-- MODAL: NUEVA / EDITAR ÁREA -->
+      <!-- MODAL UNIFICADO: CREACIÓN DE ÁREA <-> CREACIÓN DE HORARIO (SE CONVIERTE EN EL MISMO MODAL AL PULSAR +) -->
       <ModalBase
-        v-if="isModalOpen"
-        title="Configurar Área y Horario Operativo en Sucursal"
-        confirmLabel="Guardar Área"
-        size="md"
-        @close="isModalOpen = false"
-        @confirm="saveArea">
+        v-if="isModalOpen || isScheduleModalOpen"
+        :title="isScheduleModalOpen
+          ? (scheduleForm.id ? 'Editar Plantilla de Horario' : 'Crear Nuevo Horario / Jornada')
+          : (form.id ? 'Editar Área Operativa' : 'Crear Nueva Área Operativa')"
+        :subtitle="isScheduleModalOpen
+          ? 'Configura horarios fijos, parciales o mixtos con múltiples bloques por día.'
+          : ('Define los datos del departamento y selecciona su horario base en ' + (activeBranch?.nombre || 'la sucursal activa') + '.')"
+        :cancelLabel="(isScheduleModalOpen && returnToAreaModal) ? 'Volver al Área' : 'Cancelar'"
+        :confirmLabel="isScheduleModalOpen
+          ? (isSavingSchedule ? 'Guardando...' : 'Guardar Horario')
+          : 'Guardar Área'"
+        :confirmDisabled="isScheduleModalOpen ? isSavingSchedule : false"
+        :size="isScheduleModalOpen ? 'wide' : 'xl'"
+        :noScroll="true"
+        @close="isScheduleModalOpen ? closeScheduleModal() : (isModalOpen = false)"
+        @confirm="isScheduleModalOpen ? saveSchedule() : saveArea()">
 
-        <div class="space-y-4 text-xs">
-          <div class="grid grid-cols-3 gap-3">
-            <div>
-              <label class="block font-bold text-charcoal-800 mb-1">Código</label>
-              <input v-model="form.codigo" type="text" class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 mono-code font-bold">
+        <!-- VISTA 1: MODAL ÚNICAMENTE PARA CREACIÓN / EDICIÓN DEL ÁREA -->
+        <div v-if="!isScheduleModalOpen" key="view-area-only" class="space-y-4 text-xs animate-in fade-in duration-150">
+          <!-- Fila 1: Código + Nombre del Área -->
+          <div class="grid grid-cols-1 sm:grid-cols-12 gap-4">
+            <div class="sm:col-span-4">
+              <label class="block font-bold text-charcoal-800 mb-1.5">Código</label>
+              <input
+                v-model="form.codigo"
+                type="text"
+                placeholder="AREA-01"
+                class="w-full h-10 px-3.5 rounded-xl border border-charcoal-200 bg-white mono-code font-bold focus:outline-none focus:ring-2 focus:ring-charcoal-900">
             </div>
-            <div class="col-span-2">
-              <label class="block font-bold text-charcoal-800 mb-1">Nombre del Área / Departamento</label>
-              <input v-model="form.nombre" type="text" placeholder="Ej: Producción Planta B"
-                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200">
+            <div class="sm:col-span-8">
+              <label class="block font-bold text-charcoal-800 mb-1.5">Nombre del Área / Departamento *</label>
+              <input
+                v-model="form.nombre"
+                type="text"
+                placeholder="Ej: Producción Planta B"
+                class="w-full h-10 px-3.5 rounded-xl border border-charcoal-200 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-charcoal-900">
             </div>
           </div>
 
-          <div class="grid grid-cols-2 gap-3">
+          <!-- Fila 2: Jefe / Responsable + Ubicación / Sede -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label class="block font-bold text-charcoal-800 mb-1">Jefe / Responsable</label>
-              <input v-model="form.responsable" type="text" placeholder="Nombre del responsable"
-                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200">
+              <label class="block font-bold text-charcoal-800 mb-1.5">Jefe / Responsable</label>
+              <input
+                v-model="form.responsable"
+                type="text"
+                placeholder="Nombre del responsable"
+                class="w-full h-10 px-3.5 rounded-xl border border-charcoal-200 bg-white focus:outline-none focus:ring-2 focus:ring-charcoal-900">
             </div>
             <div>
-              <label class="block font-bold text-charcoal-800 mb-1">Ubicación / Sede</label>
-              <input v-model="form.ubicacion" type="text" placeholder="Ej: Cerro Gordo"
-                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200">
-            </div>
-          </div>
-
-          <div class="grid grid-cols-3 gap-3">
-            <div>
-              <label class="block font-bold text-charcoal-800 mb-1">Nombre Turno</label>
-              <input v-model="form.turno" type="text" placeholder="Matutino"
-                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200">
-            </div>
-            <div>
-              <label class="block font-bold text-charcoal-800 mb-1">Horario</label>
-              <input v-model="form.horario" type="text" placeholder="08:00 - 17:00"
-                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 mono-code">
-            </div>
-            <div>
-              <label class="block font-bold text-charcoal-800 mb-1">Tolerancia (min)</label>
-              <input v-model="form.tolerancia_min" type="number"
-                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 mono-code">
+              <label class="block font-bold text-charcoal-800 mb-1.5">Ubicación / Sede</label>
+              <input
+                v-model="form.ubicacion"
+                type="text"
+                placeholder="Ej: Sucursal Matriz"
+                class="w-full h-10 px-3.5 rounded-xl border border-charcoal-200 bg-white focus:outline-none focus:ring-2 focus:ring-charcoal-900">
             </div>
           </div>
 
-          <div>
-            <label class="block font-bold text-charcoal-800 mb-1.5">Días Laborales de la Semana (Cálculo de Faltas)</label>
-            <div class="grid grid-cols-7 gap-1.5">
-              <button
+          <!-- Fila 3: Selector Propio de Horario + Botón [+] al lado  |  Prefijos de ID -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+            <div>
+              <label class="block font-bold text-charcoal-800 mb-1.5">Horario Base del Área</label>
+              <div class="flex items-center gap-2">
+                <!-- Selector propio de la aplicación -->
+                <div class="relative flex-1 min-w-0" data-area-schedule-dropdown>
+                  <button
+                    type="button"
+                    @click="toggleAreaScheduleDropdown($event)"
+                    class="w-full h-10 px-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between gap-2"
+                    :class="isAreaScheduleDropdownOpen
+                      ? 'bg-charcoal-50 border-charcoal-900 ring-2 ring-charcoal-900/10'
+                      : 'bg-white hover:bg-charcoal-50 border-charcoal-200 hover:border-charcoal-300'">
+                    <div class="flex items-center gap-2 min-w-0">
+                      <span class="w-4 flex items-center justify-center shrink-0">
+                        <i class="ph ph-clock-user text-sm text-charcoal-400"></i>
+                      </span>
+                      <span class="font-bold text-charcoal-900 truncate">
+                        {{ selectedAreaSchedule ? selectedAreaSchedule.nombre : 'Horario Matutino' }}
+                      </span>
+                      <span
+                        v-if="selectedAreaSchedule"
+                        class="text-[11px] mono-code text-charcoal-500 truncate hidden md:inline">
+                        ({{ selectedAreaSchedule.resumen_corto }})
+                      </span>
+                    </div>
+                    <i
+                      class="ph ph-caret-down text-xs text-charcoal-400 transition-transform duration-200 shrink-0"
+                      :class="{ 'rotate-180 text-charcoal-900': isAreaScheduleDropdownOpen }"></i>
+                  </button>
+
+                  <!-- Panel Desplegable Propio de Horarios -->
+                  <div
+                    v-if="isAreaScheduleDropdownOpen"
+                    @click.stop
+                    class="absolute left-0 right-0 top-full mt-1.5 bg-white rounded-2xl border border-charcoal-200 shadow-2xl overflow-hidden z-50 flex flex-col">
+                    <div class="p-1.5 max-h-56 overflow-y-auto space-y-1">
+                      <button
+                        v-for="s in schedules"
+                        :key="s.id"
+                        type="button"
+                        @click="selectAreaSchedule(s, $event)"
+                        class="w-full text-left px-3 py-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-between gap-2"
+                        :class="selectedAreaSchedule && Number(selectedAreaSchedule.id) === Number(s.id)
+                          ? 'bg-[#18181B] text-white'
+                          : 'hover:bg-charcoal-50 text-charcoal-800'">
+                        <div class="min-w-0 flex-1">
+                          <div class="flex items-center gap-2">
+                            <span class="font-bold text-xs truncate">{{ s.nombre }}</span>
+                            <span
+                              v-if="Number(s.id) === Number(defaultBranchScheduleId)"
+                              class="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider"
+                              :class="selectedAreaSchedule && Number(selectedAreaSchedule.id) === Number(s.id)
+                                ? 'bg-white/15 text-white'
+                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'">
+                              Por defecto
+                            </span>
+                          </div>
+                          <div
+                            class="text-[10px] mono-code mt-0.5 truncate"
+                            :class="selectedAreaSchedule && Number(selectedAreaSchedule.id) === Number(s.id) ? 'text-white/75' : 'text-charcoal-500'">
+                            {{ s.resumen_corto }} · {{ s.horas_semanales }}h/sem · {{ s.tolerancia_min }}m tol.
+                          </div>
+                        </div>
+                        <i
+                          v-if="selectedAreaSchedule && Number(selectedAreaSchedule.id) === Number(s.id)"
+                          class="ph ph-check text-sm text-white shrink-0"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Botón de Vista [ph-eye]: Ver detalle del horario seleccionado -->
+                <button
+                  type="button"
+                  @click="toggleAreaScheduleDetail($event)"
+                  :title="isAreaScheduleDetailVisible ? 'Ocultar detalle del horario' : 'Ver detalle del horario seleccionado'"
+                  class="w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 cursor-pointer transition-colors"
+                  :class="isAreaScheduleDetailVisible
+                    ? 'bg-charcoal-900 text-white border-charcoal-900'
+                    : 'bg-white hover:bg-charcoal-100 text-charcoal-700 border-charcoal-200'">
+                  <i :class="['ph text-base', isAreaScheduleDetailVisible ? 'ph-eye-slash' : 'ph-eye']"></i>
+                </button>
+
+                <!-- Botón [+] a un lado del selector: convierte este mismo modal en el de creación de horario -->
+                <button
+                  type="button"
+                  @click="openNewScheduleFromArea($event)"
+                  title="Crear nuevo horario"
+                  class="w-10 h-10 rounded-xl bg-[#18181B] hover:bg-black text-white flex items-center justify-center shrink-0 cursor-pointer transition-colors shadow-2xs">
+                  <i class="ph ph-plus text-base"></i>
+                </button>
+              </div>
+              <p class="text-[11px] text-charcoal-400 mt-1">
+                Elige un horario, pulsa el icono de <b>vista</b> para ver su desglose o <b>+</b> para crear uno nuevo.
+              </p>
+            </div>
+
+            <div>
+              <label class="block font-bold text-charcoal-800 mb-1.5">Prefijos de ID para auto-asignación (Opcional)</label>
+              <input
+                v-model="form.prefijo_id"
+                type="text"
+                placeholder="Ej: 11, 12 (o dejar vacío)"
+                class="w-full h-10 px-3.5 rounded-xl border border-charcoal-200 bg-white mono-code font-bold focus:outline-none focus:ring-2 focus:ring-charcoal-900">
+              <p class="text-[11px] text-charcoal-400 mt-1">
+                Auto-asigna empleados cuyos IDs del reloj inicien con estos prefijos.
+              </p>
+            </div>
+          </div>
+
+          <!-- Panel Desplegable de Vista de Detalle del Horario Seleccionado -->
+          <div
+            v-if="isAreaScheduleDetailVisible && selectedAreaSchedule"
+            class="p-4 rounded-2xl bg-offwhite border border-charcoal-200 space-y-3 animate-in fade-in duration-150">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="w-5 flex items-center justify-center shrink-0">
+                  <i class="ph ph-calendar-check text-base text-charcoal-400"></i>
+                </span>
+                <span class="font-bold text-charcoal-900">{{ selectedAreaSchedule.nombre }}</span>
+                <span
+                  class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider mono-code"
+                  :class="selectedAreaSchedule.es_mixto ? 'bg-[#18181B] text-white' : 'bg-white border border-charcoal-200 text-charcoal-700'">
+                  {{ selectedAreaSchedule.es_mixto ? 'Mixto / Parcial' : 'Fijo' }}
+                </span>
+              </div>
+              <div class="flex items-center gap-2 mono-code text-[11px]">
+                <span class="font-bold text-charcoal-900">{{ selectedAreaSchedule.horas_semanales }}h / sem</span>
+                <span class="text-charcoal-300">·</span>
+                <span class="font-bold text-emerald-700">{{ selectedAreaSchedule.tolerancia_min }} min tolerancia</span>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+              <div
                 v-for="d in WEEK_DAYS"
-                :key="d.num"
-                type="button"
-                @click="toggleWorkDay(d.num)"
-                class="py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer text-center"
-                :class="isWorkDaySelected(d.num)
-                  ? 'bg-[#18181B] text-white border-[#18181B]'
-                  : 'bg-offwhite text-charcoal-600 border-charcoal-200 hover:bg-charcoal-100'">
-                {{ d.label }}
-              </button>
+                :key="'area-preview-' + d.num"
+                class="p-2.5 rounded-xl border text-center flex flex-col justify-between min-h-[60px]"
+                :class="formatDayBlocksSummary(selectedAreaSchedule, d.num) === 'Descanso'
+                  ? 'bg-charcoal-50/70 border-charcoal-200/60 text-charcoal-400'
+                  : 'bg-white border-charcoal-200 text-charcoal-900 shadow-2xs'">
+                <span class="text-[10px] font-bold uppercase tracking-wider block">{{ d.label }}</span>
+                <span class="text-[10px] mono-code font-bold leading-tight mt-1 block">
+                  {{ formatDayBlocksSummary(selectedAreaSchedule, d.num) }}
+                </span>
+              </div>
             </div>
           </div>
+        </div>
+
+        <!-- VISTA 2: MODAL DE CREACIÓN / EDICIÓN DE HORARIO (EL MISMO MODAL SE CONVIERTE AQUÍ) -->
+        <div v-else key="view-schedule-creator" class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start text-xs animate-in fade-in duration-150">
+
+          <!-- COLUMNA IZQUIERDA (4 cols): IDENTIFICACIÓN Y SLIDER DE TOLERANCIA -->
+          <div class="lg:col-span-4 space-y-3.5">
+            <div class="p-4 rounded-3xl bg-white border border-charcoal-200 space-y-3.5">
+              <div class="flex items-center gap-3 pb-2.5 border-b border-charcoal-100">
+                <span class="w-5 flex items-center justify-center shrink-0">
+                  <i class="ph ph-calendar-check text-lg text-charcoal-400"></i>
+                </span>
+                <div>
+                  <span class="text-[11px] font-bold uppercase tracking-wider text-charcoal-400 block">
+                    Datos del Horario
+                  </span>
+                  <span class="text-[11px] text-charcoal-500">
+                    Nombre identificador en áreas y empleados
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label class="block font-bold text-charcoal-800 mb-1">Nombre del Horario *</label>
+                <input
+                  v-model="scheduleForm.nombre"
+                  type="text"
+                  placeholder="Ej: Mixto Partido Sistemas"
+                  class="w-full h-9 px-3.5 rounded-xl border border-charcoal-200 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-charcoal-900">
+              </div>
+
+              <div>
+                <label class="block font-bold text-charcoal-800 mb-1">Descripción / Referencia (Opcional)</label>
+                <input
+                  v-model="scheduleForm.descripcion"
+                  type="text"
+                  placeholder="Ej: L-M-V partido 8-11 y 15-18, M-J tarde"
+                  class="w-full h-9 px-3.5 rounded-xl border border-charcoal-200 bg-white focus:outline-none focus:ring-2 focus:ring-charcoal-900">
+              </div>
+            </div>
+
+            <!-- Slider único de Tolerancia de Entrada (sin botones ni +/-) -->
+            <div class="p-4 rounded-3xl bg-white border border-charcoal-200 space-y-3">
+              <div class="flex items-center justify-between gap-2">
+                <div class="flex items-center gap-3">
+                  <span class="w-5 flex items-center justify-center shrink-0">
+                    <i class="ph ph-clock-countdown text-lg text-charcoal-400"></i>
+                  </span>
+                  <div>
+                    <span class="text-[11px] font-bold uppercase tracking-wider text-charcoal-400 block">
+                      Tolerancia de Entrada
+                    </span>
+                    <span class="text-[11px] text-charcoal-500">
+                      Desliza para definir el margen sin retardo
+                    </span>
+                  </div>
+                </div>
+                <span class="px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 mono-code font-bold text-xs shrink-0">
+                  {{ scheduleForm.tolerancia_min }} min
+                </span>
+              </div>
+
+              <div class="pt-1 space-y-1.5">
+                <input
+                  type="range"
+                  min="0"
+                  max="60"
+                  step="1"
+                  :value="scheduleForm.tolerancia_min"
+                  @input="setScheduleTolerance($event.target.value)"
+                  :style="{
+                    background: 'linear-gradient(to right, #18181B 0%, #18181B ' + Math.min(100, Math.round((Number(scheduleForm.tolerancia_min || 0) / 60) * 100)) + '%, #E4E4E7 ' + Math.min(100, Math.round((Number(scheduleForm.tolerancia_min || 0) / 60) * 100)) + '%, #E4E4E7 100%)'
+                  }"
+                  class="w-full h-2 rounded-full appearance-none cursor-pointer accent-[#18181B]" />
+                <div class="flex items-center justify-between text-[10px] mono-code font-semibold text-charcoal-400">
+                  <span>0 min</span>
+                  <span>15 min</span>
+                  <span>30 min</span>
+                  <span>45 min</span>
+                  <span>60 min</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Nota informativa de reglas de asistencia -->
+            <div class="p-3.5 rounded-3xl bg-offwhite border border-charcoal-200/80 space-y-1.5 text-[11px] text-charcoal-600">
+              <div class="font-semibold text-charcoal-900 flex items-center gap-3">
+                <span class="w-5 flex items-center justify-center shrink-0"><i class="ph ph-info text-lg text-charcoal-400"></i></span>
+                <span>Motor de Jornadas Mixtas y Partidas</span>
+              </div>
+              <p class="leading-relaxed">
+                Activa cualquier día y pulsa <b>+ Bloque</b> para turnos partidos. El sistema contabiliza máximo 1 retardo por día y reporta las horas reales trabajadas.
+              </p>
+            </div>
+          </div>
+
+          <!-- COLUMNA DERECHA (8 cols): MATRIZ SEMANAL COMPACTA SIN SCROLL -->
+          <div class="lg:col-span-8">
+            <ScheduleBlocksEditor v-model="scheduleForm.bloques" />
+          </div>
+
         </div>
       </ModalBase>
 

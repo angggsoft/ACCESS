@@ -43,7 +43,7 @@ def test_webhooks_remain_public():
 
 def test_login_and_authenticated_access():
     print("\n--- TEST 3: Login y acceso con sesión / cookie ---")
-    login_res = client.post("/api/auth/login", json={"username": "angel.flores", "password": "123456"})
+    login_res = client.post("/api/auth/login", json={"username": "rh.demo", "password": "quodo123"})
     assert login_res.status_code == 200, f"Login failed: {login_res.text}"
     token = login_res.json()["token"]
     assert "access_session" in login_res.cookies, "Cookie access_session no emitida"

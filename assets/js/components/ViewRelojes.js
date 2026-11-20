@@ -330,12 +330,12 @@ export default {
         </div>
       </div>
 
-      <!-- MODAL: REGISTRAR / EDITAR RELOJ EN SUCURSAL -->
+      <!-- MODAL: REGISTRAR / EDITAR RELOJ EN SUCURSAL (DISTRIBUCIÓN HORIZONTAL AMPLIA) -->
       <ModalBase
         v-if="isAddModalOpen"
         :title="newClock.id ? ('Editar Reloj Checador — ' + newClock.nombre) : 'Registrar Reloj Checador en Sucursal (Push)'"
         :confirmLabel="newClock.id ? 'Guardar Cambios' : 'Guardar Reloj'"
-        size="md"
+        size="xl"
         @close="isAddModalOpen = false"
         @confirm="saveNewClock">
         
@@ -343,11 +343,11 @@ export default {
           <!-- Selector de Marca -->
           <div>
             <label class="block font-bold text-charcoal-800 mb-1.5">Marca y Protocolo del Reloj</label>
-            <div class="grid grid-cols-2 gap-2.5">
+            <div class="grid grid-cols-2 gap-3">
               <button
                 type="button"
                 @click="setBrand('HIKVISION')"
-                class="p-3 rounded-2xl border text-left transition-all cursor-pointer"
+                class="p-3.5 rounded-2xl border text-left transition-all cursor-pointer"
                 :class="newClock.marca === 'HIKVISION' ? 'bg-[#18181B] text-white border-[#18181B]' : 'bg-offwhite text-charcoal-800 border-charcoal-200 hover:bg-white'">
                 <div class="font-bold text-xs">Hikvision</div>
                 <div class="text-[10px]" :class="newClock.marca === 'HIKVISION' ? 'text-charcoal-300' : 'text-charcoal-500'">ISAPI HTTP Listening</div>
@@ -355,7 +355,7 @@ export default {
               <button
                 type="button"
                 @click="setBrand('ZKTECO')"
-                class="p-3 rounded-2xl border text-left transition-all cursor-pointer"
+                class="p-3.5 rounded-2xl border text-left transition-all cursor-pointer"
                 :class="newClock.marca === 'ZKTECO' ? 'bg-[#18181B] text-white border-[#18181B]' : 'bg-offwhite text-charcoal-800 border-charcoal-200 hover:bg-white'">
                 <div class="font-bold text-xs">ZKTeco</div>
                 <div class="text-[10px]" :class="newClock.marca === 'ZKTECO' ? 'text-charcoal-300' : 'text-charcoal-500'">Protocolo ADMS (/iclock)</div>
@@ -363,17 +363,16 @@ export default {
             </div>
           </div>
 
-          <div>
-            <label class="block font-bold text-charcoal-800 mb-1">Nombre Identificador del Reloj</label>
-            <input v-model="newClock.nombre" type="text" placeholder="Ej: Reloj Entrada Planta Norte"
-              class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 focus:outline-none focus:ring-2 focus:ring-charcoal-900">
-          </div>
-
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="block font-bold text-charcoal-800 mb-1">Nombre Identificador del Reloj</label>
+              <input v-model="newClock.nombre" type="text" placeholder="Ej: Reloj Entrada Planta Norte"
+                class="w-full h-10 px-3.5 rounded-xl border border-charcoal-200 focus:outline-none focus:ring-2 focus:ring-charcoal-900">
+            </div>
             <div>
               <label class="block font-bold text-charcoal-800 mb-1">Modelo del Equipo</label>
               <input v-model="newClock.modelo" type="text" :placeholder="newClock.marca === 'ZKTECO' ? 'SpeedFace-V5L / MB360' : 'DS-K1T320MFWX-B'"
-                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 mono-code">
+                class="w-full h-10 px-3.5 rounded-xl border border-charcoal-200 mono-code">
             </div>
             <div>
               <label class="block font-bold text-charcoal-800 mb-1">
@@ -382,15 +381,15 @@ export default {
                 <span v-else class="text-charcoal-400 font-normal">(Opcional)</span>
               </label>
               <input v-model="newClock.serie" type="text" :placeholder="newClock.marca === 'ZKTECO' ? 'Ej: BJ4D221260045' : 'Ej: DS-K1T320...'"
-                class="w-full px-3.5 py-2.5 rounded-xl border mono-code"
+                class="w-full h-10 px-3.5 rounded-xl border mono-code"
                 :class="newClock.marca === 'ZKTECO' ? 'border-charcoal-900 font-bold' : 'border-charcoal-200'">
             </div>
           </div>
 
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block font-bold text-charcoal-800 mb-1">Área Principal Asignada</label>
-              <select v-model="newClock.area_asignada" class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 bg-white">
+              <select v-model="newClock.area_asignada" class="w-full h-10 px-3.5 rounded-xl border border-charcoal-200 bg-white">
                 <option v-for="a in areas" :key="a.id" :value="a.nombre">{{ a.nombre }}</option>
                 <option value="General">General</option>
               </select>
@@ -398,7 +397,7 @@ export default {
             <div>
               <label class="block font-bold text-charcoal-800 mb-1">Ubicación en la Sucursal</label>
               <input v-model="newClock.ubicacion" type="text" placeholder="Ej: Caseta de Vigilancia"
-                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200">
+                class="w-full h-10 px-3.5 rounded-xl border border-charcoal-200">
             </div>
           </div>
         </div>
@@ -409,7 +408,7 @@ export default {
         v-if="isGuideModalOpen && guideDevice"
         :title="'Configurar Reloj ' + (guideDevice.marca || 'HIKVISION') + ' — ' + guideDevice.nombre"
         confirmLabel="Entendido"
-        size="md"
+        size="lg"
         @close="isGuideModalOpen = false"
         @confirm="isGuideModalOpen = false">
         <div v-if="(guideDevice.marca || 'HIKVISION') === 'ZKTECO'" class="space-y-3 text-xs">

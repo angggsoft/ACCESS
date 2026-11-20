@@ -612,20 +612,20 @@ async def zkteco_adms_handshake(request: Request):
 
 @app.post("/iclock/cdata", response_class=PlainTextResponse)
 async def zkteco_adms_receive_data(request: Request):
-    """Recepción de checadas ZKTeco ADMS (table=ATTLOG separado por tabuladores)."""
+    """Recepción de checadas ZKTeco ADMS (table=ATTLOG separado por tabuladores) en una sola transacción por lote."""
     sn = (request.query_params.get("SN") or "").strip()
     table = (request.query_params.get("table") or "").strip().upper()
     clock = db.get_clock_by_serial(sn) if sn else None
     if not clock:
         return PlainTextResponse("OK: 0", status_code=404)
 
-    db.touch_clock_heartbeat(clock["id"])
     if table != "ATTLOG":
+        db.touch_clock_heartbeat(clock["id"])
         return PlainTextResponse("OK")
 
     raw_bytes = await request.body()
     raw_body = raw_bytes.decode("utf-8", errors="ignore")
-    count = 0
+    events = []
 
     for raw_line in raw_body.splitlines():
         line = raw_line.strip()
@@ -647,21 +647,21 @@ async def zkteco_adms_receive_data(request: Request):
         verify_code = safe_int(parts[3]) if len(parts) > 3 and parts[3] != "" else 1
         sub_type = ZK_VERIFY_TO_SUB_EVENT.get(verify_code, 38)
 
-        db.record_checkin(
-            serial_no=None,
-            emp_no=emp_no,
-            nombre=f"Empleado #{emp_no}",
-            tipo_evento="ZKTecoADMS",
-            sub_event_type=sub_type,
-            fecha_hora=dt_iso,
-            reloj_nombre=clock["nombre"],
-            empresa_id=clock["empresa_id"],
-            sucursal_id=clock["sucursal_id"],
-            reloj_id=clock["id"]
-        )
-        count += 1
+        events.append({
+            "serial_no": None,
+            "emp_no": emp_no,
+            "nombre": f"Empleado #{emp_no}",
+            "tipo_evento": "ZKTecoADMS",
+            "sub_event_type": sub_type,
+            "fecha_hora": dt_iso
+        })
 
-    return PlainTextResponse(f"OK: {count}")
+    if not events:
+        db.touch_clock_heartbeat(clock["id"])
+        return PlainTextResponse("OK: 0")
+
+    res = db.record_checkins_batch(events, clock)
+    return PlainTextResponse(f"OK: {res['processed']}")
 
 
 @app.get("/iclock/getrequest", response_class=PlainTextResponse)
@@ -766,21 +766,92 @@ def _enrich_reloj(r: Any, request: Optional[Request] = None) -> Dict[str, Any]:
     return d
 
 
-def _enrich_empleado(e: Any) -> Dict[str, Any]:
+def _enrich_empleado(
+    e: Any,
+    resolver: Optional[Dict[str, Any]] = None,
+    branches_map: Optional[Dict[int, str]] = None
+) -> Dict[str, Any]:
     d = dict(e)
     d["area"] = d.get("area_nombre") or "General"
     d["codigo_contpaqi"] = d.get("codigo_contpaqi") or ""
     d["sin_nombre"] = db.is_default_employee_name(d.get("nombre"), d.get("codigo_empleado"))
+    d["horario_id"] = d.get("horario_id")
+    suc_id_val = d.get("sucursal_id")
+    if branches_map is not None:
+        d["sucursal_base_nombre"] = branches_map.get(int(suc_id_val or 0), "Sin sucursal")
+    if resolver is not None:
+        sched = db.resolve_employee_schedule(
+            resolver,
+            emp_code=str(d.get("codigo_empleado")),
+            area_name=d["area"],
+            emp_horario_id=d.get("horario_id")
+        )
+        d["horario_origen"] = sched["origen"]
+        d["horario_efectivo_id"] = sched["horario_id"]
+        d["horario_nombre"] = sched["horario_nombre"]
+        d["horario_resumen"] = sched["resumen_corto"]
+        d["horario_detalle"] = sched["resumen_detalle"]
+        d["horario_es_mixto"] = sched["es_mixto"]
+        d["horario_tolerancia_min"] = sched["tolerancia_min"]
+        d["horario_bloques"] = [
+            {
+                "dia_semana": b["dia_semana"],
+                "hora_entrada": b["hora_entrada"],
+                "hora_salida": b["hora_salida"],
+                "tolerancia_min": b.get("tolerancia_min")
+            }
+            for b in sched.get("bloques", [])
+        ]
     return d
 
 
-def _enrich_area(a: Any, conn: db.DualConnection) -> Dict[str, Any]:
+def _enrich_area(
+    a: Any,
+    conn: db.DualConnection,
+    resolver: Optional[Dict[str, Any]] = None,
+    branches_map: Optional[Dict[int, str]] = None
+) -> Dict[str, Any]:
     d = dict(a)
-    horario = d.get("horario") or "08:00 - 17:00"
-    parts = [p.strip() for p in horario.split("-")]
-    d["hora_entrada"] = parts[0] if len(parts) >= 1 else "08:00"
-    d["hora_salida"] = parts[1] if len(parts) >= 2 else "17:00"
-    d["dias_laborales"] = d.get("dias_laborales") or "1,2,3,4,5"
+    if branches_map is not None:
+        d["sucursal_nombre"] = branches_map.get(int(d.get("sucursal_id") or 0), "")
+    sched = None
+    if resolver is not None:
+        raw_hid = d.get("horario_id")
+        if raw_hid is not None and int(raw_hid) in resolver["schedules_by_id"]:
+            sched = resolver["schedules_by_id"][int(raw_hid)]
+        else:
+            sched = db.resolve_employee_schedule(resolver, area_name=d.get("nombre"))
+
+    if sched and sched.get("bloques"):
+        first_day = sorted(sched["bloques_por_dia"].keys())[0]
+        first_day_blocks = sched["bloques_por_dia"][first_day]
+        d["hora_entrada"] = first_day_blocks[0]["hora_entrada_str"]
+        d["hora_salida"] = first_day_blocks[-1]["hora_salida_str"]
+        d["horario"] = sched["resumen_corto"]
+        d["dias_laborales"] = sched["dias_laborales_str"] or d.get("dias_laborales") or "1,2,3,4,5"
+        d["tolerancia_min"] = sched["tolerancia_min"]
+        d["horario_id"] = sched.get("id") or d.get("horario_id")
+        d["horario_nombre"] = sched.get("nombre") or (d.get("turno") or "Estándar")
+        d["horario_resumen"] = sched["resumen_corto"]
+        d["horario_detalle"] = sched["resumen_detalle"]
+        d["horario_es_mixto"] = sched["es_mixto"]
+        d["horario_bloques"] = sched["bloques"]
+        d["horas_semanales"] = sched["horas_semanales"]
+    else:
+        horario = d.get("horario") or "08:00 - 17:00"
+        parts = [p.strip() for p in horario.split("-")]
+        d["hora_entrada"] = parts[0] if len(parts) >= 1 else "08:00"
+        d["hora_salida"] = parts[1] if len(parts) >= 2 else "17:00"
+        d["dias_laborales"] = d.get("dias_laborales") or "1,2,3,4,5"
+        d["horario_id"] = d.get("horario_id")
+        d["horario_nombre"] = d.get("turno") or "Estándar"
+        d["horario_resumen"] = horario
+        d["horario_detalle"] = ""
+        d["horario_es_mixto"] = False
+        d["horario_bloques"] = []
+        d["horas_semanales"] = 0.0
+
+    d["prefijo_id"] = (d.get("prefijo_id") or "").strip()
     d["reloj_asignado"] = d.get("ubicacion") or "Sucursal Activa"
     cnt = conn.execute(
         "SELECT COUNT(*) as cnt FROM empleados WHERE empresa_id = ? AND sucursal_id = ? AND area_nombre = ?",
@@ -798,7 +869,10 @@ async def api_dashboard_overview(
     sucursal_id: Optional[int] = None,
     user: Dict[str, Any] = Depends(require_rh_active)
 ):
-    emp_id, suc_id = db.resolve_user_scope(user["id"], empresa_id, sucursal_id)
+    is_all_branches = (sucursal_id == 0)
+    emp_id, suc_id = db.resolve_user_scope(
+        user["id"], empresa_id, sucursal_id, allow_all_branches=is_all_branches
+    )
     companies = db.get_user_companies(user["id"])
 
     user_sub = db.get_user_subscription(user["id"])
@@ -817,14 +891,23 @@ async def api_dashboard_overview(
             "devices": [],
             "relojes": [],
             "areas": [],
+            "schedules": [],
+            "horarios": [],
             "employees": [],
-            "empleados": []
+            "empleados": [],
+            "company_employees": [],
+            "company_areas": [],
+            "company_schedules": [],
+            "company_devices": []
         }
 
     summary = db.get_dashboard_summary(empresa_id=emp_id, sucursal_id=suc_id)
     records = db.list_checadas(limit=100, empresa_id=emp_id, sucursal_id=suc_id)
 
     conn = db.get_conn()
+    branch_rows = conn.execute("SELECT id, nombre FROM sucursales WHERE empresa_id = ?", (emp_id,)).fetchall()
+    branches_map = {int(b["id"]): b["nombre"] for b in branch_rows}
+
     conds = ["empresa_id = ?"]
     params = [emp_id]
     if suc_id:
@@ -833,16 +916,34 @@ async def api_dashboard_overview(
     w_sql = " AND ".join(conds)
     p_tup = tuple(params)
 
+    default_tol = int(user_settings.get("tolerancia_minutos") or 10)
+    resolver = db.build_schedule_resolver(conn, emp_id, suc_id, default_tol=default_tol)
+    horarios = db.get_schedules_for_branch(emp_id, suc_id, include_custom=False, conn=conn)
     relojes = [_enrich_reloj(r, request) for r in conn.execute(f"SELECT * FROM relojes WHERE {w_sql} ORDER BY id ASC", p_tup).fetchall()]
-    areas = [_enrich_area(r, conn) for r in conn.execute(f"SELECT * FROM areas WHERE {w_sql} ORDER BY id ASC", p_tup).fetchall()]
-    empleados = [_enrich_empleado(r) for r in conn.execute(f"SELECT * FROM empleados WHERE {w_sql} ORDER BY id ASC", p_tup).fetchall()]
+    areas = [_enrich_area(r, conn, resolver, branches_map) for r in conn.execute(f"SELECT * FROM areas WHERE {w_sql} ORDER BY id ASC", p_tup).fetchall()]
+    empleados = [_enrich_empleado(r, resolver, branches_map) for r in conn.execute(f"SELECT * FROM empleados WHERE {w_sql} ORDER BY id ASC", p_tup).fetchall()]
+
+    # Catálogos completos a nivel empresa para gestión cross-sucursal
+    company_schedules = db.get_schedules_for_branch(emp_id, None, include_custom=False, conn=conn)
+    company_devices = [
+        {**_enrich_reloj(r, request), "sucursal_nombre": branches_map.get(int(r["sucursal_id"] or 0), "")}
+        for r in conn.execute("SELECT * FROM relojes WHERE empresa_id = ? ORDER BY id ASC", (emp_id,)).fetchall()
+    ]
+    company_areas = [
+        _enrich_area(r, conn, resolver, branches_map)
+        for r in conn.execute("SELECT * FROM areas WHERE empresa_id = ? ORDER BY id ASC", (emp_id,)).fetchall()
+    ]
+    company_employees = [
+        _enrich_empleado(r, resolver, branches_map)
+        for r in conn.execute("SELECT * FROM empleados WHERE empresa_id = ? ORDER BY id ASC", (emp_id,)).fetchall()
+    ]
     conn.close()
 
     return {
         "status": "success",
         "companies": companies,
         "active_empresa_id": emp_id,
-        "active_sucursal_id": suc_id,
+        "active_sucursal_id": 0 if is_all_branches else suc_id,
         "summary": summary,
         "settings": user_settings,
         "subscription": user_sub,
@@ -850,8 +951,14 @@ async def api_dashboard_overview(
         "devices": relojes,
         "relojes": relojes,
         "areas": areas,
+        "schedules": horarios,
+        "horarios": horarios,
         "employees": empleados,
-        "empleados": empleados
+        "empleados": empleados,
+        "company_employees": company_employees,
+        "company_areas": company_areas,
+        "company_schedules": company_schedules,
+        "company_devices": company_devices
     }
 
 
@@ -891,6 +998,16 @@ async def api_record_manual_attendance(
         raise HTTPException(status_code=400, detail="La fecha y hora del evento son obligatorias.")
 
     emp_id, suc_id = db.resolve_user_scope(user["id"], req_emp_id, req_suc_id)
+    if req_suc_id in (None, "", "null"):
+        conn_tmp = db.get_conn()
+        emp_base = conn_tmp.execute(
+            "SELECT sucursal_id FROM empleados WHERE empresa_id = ? AND codigo_empleado = ? LIMIT 1",
+            (emp_id, emp_no)
+        ).fetchone()
+        conn_tmp.close()
+        if emp_base and emp_base["sucursal_id"]:
+            suc_id = int(emp_base["sucursal_id"])
+
     record = db.record_manual_checkin(
         emp_no=emp_no,
         fecha_hora=fecha_hora,
@@ -1045,16 +1162,27 @@ async def api_delete_device(
 async def api_get_employees(
     empresa_id: Optional[int] = None,
     sucursal_id: Optional[int] = None,
+    all_branches: bool = False,
     user: Dict[str, Any] = Depends(require_rh_active)
 ):
-    emp_id, suc_id = db.resolve_user_scope(user["id"], empresa_id, sucursal_id)
+    allow_all = bool(all_branches or (sucursal_id == 0))
+    emp_id, suc_id = db.resolve_user_scope(
+        user["id"], empresa_id, sucursal_id, allow_all_branches=allow_all
+    )
     conn = db.get_conn()
+    branch_rows = conn.execute("SELECT id, nombre FROM sucursales WHERE empresa_id = ?", (emp_id,)).fetchall()
+    branches_map = {int(b["id"]): b["nombre"] for b in branch_rows}
     conds = ["empresa_id = ?"]
-    params = [emp_id]
+    params: list = [emp_id]
     if suc_id:
         conds.append("sucursal_id = ?")
         params.append(suc_id)
-    rows = [_enrich_empleado(r) for r in conn.execute(f"SELECT * FROM empleados WHERE {' AND '.join(conds)} ORDER BY id ASC", tuple(params)).fetchall()]
+    default_tol = int(db.get_setting("tolerancia_minutos", 10, user_id=user["id"]) or 10)
+    resolver = db.build_schedule_resolver(conn, emp_id, suc_id, default_tol=default_tol)
+    rows = [
+        _enrich_empleado(r, resolver, branches_map)
+        for r in conn.execute(f"SELECT * FROM empleados WHERE {' AND '.join(conds)} ORDER BY id ASC", tuple(params)).fetchall()
+    ]
     conn.close()
     return {"status": "success", "employees": rows}
 
@@ -1065,12 +1193,13 @@ async def api_create_or_update_employee(
     user: Dict[str, Any] = Depends(require_rh_active)
 ):
     """
-    Registra o actualiza los datos de RH (Nombre, Área, Puesto, Turno) de un empleado
-    en la sucursal seleccionada. El enrolamiento biométrico se hace directamente en el reloj físico.
+    Registra o actualiza los datos de RH (Nombre, Sucursal Base, Área, Puesto, Turno y Horario)
+    de un colaborador único dentro de la empresa. El enrolamiento biométrico se realiza en los relojes físicos.
     """
     req_emp_id = payload.get("empresa_id")
     req_suc_id = payload.get("sucursal_id")
-    emp_id, suc_id = db.resolve_user_scope(user["id"], req_emp_id, req_suc_id)
+    has_explicit_suc = req_suc_id not in (None, "", "null", 0, "0")
+    emp_id, suc_id = db.resolve_user_scope(user["id"], req_emp_id, int(req_suc_id) if has_explicit_suc else None)
 
     emp_no = str(payload.get("codigo_empleado", "")).strip()
     if not emp_no:
@@ -1080,44 +1209,326 @@ async def api_create_or_update_employee(
     nombre = (payload.get("nombre") or "").strip() or f"Empleado #{emp_no}"
     area_nombre = (payload.get("area") or payload.get("area_nombre") or "General").strip()
     puesto = (payload.get("puesto") or "Colaborador").strip()
-    turno = (payload.get("turno") or "Matutino (08:00 - 17:00)").strip()
     pin = str(payload.get("pin") or "").strip()
     tiene_huella = 1 if payload.get("tiene_huella") else 0
     tiene_rostro = 1 if payload.get("tiene_rostro") else 0
-    reloj_asignado = (payload.get("reloj_asignado") or "Sucursal Activa").strip()
+    horario_mode = str(payload.get("horario_mode") or "").strip().lower()
 
     conn = db.get_conn()
-    cur = conn.cursor()
-    existing = cur.execute(
-        "SELECT id FROM empleados WHERE empresa_id = ? AND sucursal_id = ? AND codigo_empleado = ?",
-        (emp_id, suc_id, emp_no)
-    ).fetchone()
-    if existing:
+    try:
+        cur = conn.cursor()
+        existing = cur.execute(
+            "SELECT id, sucursal_id, horario_id, turno, reloj_asignado FROM empleados WHERE empresa_id = ? AND codigo_empleado = ?",
+            (emp_id, emp_no)
+        ).fetchone()
+
+        if existing:
+            target_suc_id = int(suc_id) if has_explicit_suc else int(existing["sucursal_id"] or suc_id or 1)
+            reloj_asignado = (payload.get("reloj_asignado") or existing["reloj_asignado"] or "Sucursal Activa").strip()
+        else:
+            target_suc_id = int(suc_id or 1)
+            reloj_asignado = (payload.get("reloj_asignado") or "Sucursal Activa").strip()
+
+        old_horario_id = existing["horario_id"] if existing and "horario_id" in existing.keys() else None
+        new_horario_id = old_horario_id
+        turno_override = None
+
+        if horario_mode == "area":
+            new_horario_id = None
+            area_row = cur.execute(
+                "SELECT turno, horario, horario_id FROM areas WHERE empresa_id = ? AND sucursal_id = ? AND LOWER(TRIM(nombre)) = LOWER(TRIM(?)) LIMIT 1",
+                (emp_id, target_suc_id, area_nombre)
+            ).fetchone()
+            if not area_row:
+                area_row = cur.execute(
+                    "SELECT turno, horario, horario_id FROM areas WHERE empresa_id = ? AND LOWER(TRIM(nombre)) = LOWER(TRIM(?)) LIMIT 1",
+                    (emp_id, area_nombre)
+                ).fetchone()
+            if area_row:
+                turno_override = f"{(area_row['turno'] or 'Área').strip()} ({area_row['horario'] or 'Horario área'})"
+        elif horario_mode == "plantilla":
+            req_hid = payload.get("horario_id")
+            if req_hid in (None, "", "null"):
+                raise HTTPException(status_code=400, detail="Selecciona una plantilla de horario válida.")
+            try:
+                req_hid_int = int(req_hid)
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=400, detail="ID de plantilla de horario inválido.")
+            tpl = db.get_schedule_by_id(req_hid_int, emp_id, conn=conn)
+            if not tpl:
+                raise HTTPException(status_code=400, detail="La plantilla de horario seleccionada no existe en esta empresa.")
+            new_horario_id = int(tpl["id"])
+            turno_override = f"{tpl['nombre']} ({tpl['resumen_corto']})"
+        elif horario_mode == "personalizado":
+            raw_blocks = payload.get("horario_bloques") or []
+            tol_in = payload.get("horario_tolerancia_min", 10)
+            target_custom_id = None
+            if old_horario_id:
+                old_h = cur.execute(
+                    "SELECT id, es_plantilla FROM horarios WHERE id = ? AND empresa_id = ?",
+                    (int(old_horario_id), emp_id)
+                ).fetchone()
+                if old_h and int(old_h["es_plantilla"] if old_h["es_plantilla"] is not None else 1) == 0:
+                    other_emp_cnt = cur.execute(
+                        "SELECT COUNT(*) as c FROM empleados WHERE empresa_id = ? AND horario_id = ? AND codigo_empleado != ?",
+                        (emp_id, int(old_horario_id), emp_no)
+                    ).fetchone()["c"]
+                    other_area_cnt = cur.execute(
+                        "SELECT COUNT(*) as c FROM areas WHERE empresa_id = ? AND horario_id = ?",
+                        (emp_id, int(old_horario_id))
+                    ).fetchone()["c"]
+                    if int(other_emp_cnt) == 0 and int(other_area_cnt) == 0:
+                        target_custom_id = int(old_horario_id)
+
+            save_res = db.save_schedule(
+                emp_id,
+                target_suc_id or 1,
+                {
+                    "id": target_custom_id,
+                    "nombre": f"Personalizado — {nombre}",
+                    "descripcion": f"Horario individual de #{emp_no}",
+                    "tolerancia_min": tol_in,
+                    "es_plantilla": 0,
+                    "bloques": raw_blocks
+                },
+                conn=conn
+            )
+            if not save_res.get("ok"):
+                conn._conn.rollback()
+                raise HTTPException(status_code=400, detail=save_res.get("error", "Horario personalizado inválido."))
+            new_horario_id = int(save_res["id"])
+            turno_override = f"Personalizado ({save_res['schedule']['resumen_corto']})"
+
+        turno = (
+            turno_override
+            or payload.get("turno")
+            or (existing["turno"] if existing else None)
+            or "Matutino (08:00 - 17:00)"
+        ).strip()
+
+        if existing:
+            cur.execute("""
+                UPDATE empleados
+                SET sucursal_id = ?, nombre = ?, codigo_contpaqi = ?, area_nombre = ?, puesto = ?, turno = ?, horario_id = ?, pin = ?,
+                    tiene_huella = COALESCE(?, tiene_huella), tiene_rostro = COALESCE(?, tiene_rostro)
+                WHERE id = ?
+            """, (target_suc_id, nombre, codigo_contpaqi, area_nombre, puesto, turno, new_horario_id, pin, tiene_huella, tiene_rostro, existing["id"]))
+        else:
+            cur.execute("""
+                INSERT INTO empleados (
+                    empresa_id, sucursal_id, codigo_empleado, codigo_contpaqi, nombre, area_nombre, puesto, turno, horario_id, pin,
+                    tiene_huella, tiene_rostro, tiene_tarjeta, admin_ui, reloj_asignado, estado
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, 'ACTIVO')
+            """, (emp_id, target_suc_id, emp_no, codigo_contpaqi, nombre, area_nombre, puesto, turno, new_horario_id, pin, tiene_huella, tiene_rostro, reloj_asignado))
+
+        if old_horario_id and old_horario_id != new_horario_id:
+            db.cleanup_orphan_custom_schedule(cur, old_horario_id, emp_id)
+
         cur.execute("""
-            UPDATE empleados
-            SET nombre = ?, codigo_contpaqi = ?, area_nombre = ?, puesto = ?, turno = ?, pin = ?,
-                tiene_huella = COALESCE(?, tiene_huella), tiene_rostro = COALESCE(?, tiene_rostro)
-            WHERE id = ?
-        """, (nombre, codigo_contpaqi, area_nombre, puesto, turno, pin, tiene_huella, tiene_rostro, existing["id"]))
-    else:
-        cur.execute("""
-            INSERT INTO empleados (
-                empresa_id, sucursal_id, codigo_empleado, codigo_contpaqi, nombre, area_nombre, puesto, turno, pin,
-                tiene_huella, tiene_rostro, tiene_tarjeta, admin_ui, reloj_asignado, estado
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, 'ACTIVO')
-        """, (emp_id, suc_id, emp_no, codigo_contpaqi, nombre, area_nombre, puesto, turno, pin, tiene_huella, tiene_rostro, reloj_asignado))
-    cur.execute("""
-        UPDATE checadas
-        SET nombre = ?, area = ?
-        WHERE empresa_id = ? AND sucursal_id = ? AND codigo_empleado = ?
-    """, (nombre, area_nombre, emp_id, suc_id, emp_no))
-    conn.commit()
-    conn.close()
+            UPDATE checadas
+            SET nombre = ?, area = ?
+            WHERE empresa_id = ? AND codigo_empleado = ?
+        """, (nombre, area_nombre, emp_id, emp_no))
+        conn.commit()
+    except HTTPException:
+        conn._conn.rollback()
+        raise
+    except Exception:
+        conn._conn.rollback()
+        raise
+    finally:
+        conn.close()
 
     return {
         "ok": True,
         "status": "success",
-        "message": f"Colaborador #{emp_no} ({nombre}) guardado en el catálogo de la sucursal."
+        "sucursal_id": target_suc_id,
+        "horario_id": new_horario_id,
+        "message": f"Colaborador #{emp_no} ({nombre}) guardado en el catálogo de la empresa."
+    }
+
+
+@app.get("/api/employees/template-csv")
+async def api_employees_template_csv(
+    empresa_id: Optional[int] = None,
+    sucursal_id: Optional[int] = None,
+    all_branches: bool = False,
+    user: Dict[str, Any] = Depends(require_rh_active)
+):
+    """
+    Genera y descarga la plantilla CSV con BOM UTF-8 (utf-8-sig) pre-llenada con los
+    empleados de la empresa (o filtrados por sucursal base).
+    """
+    allow_all = bool(all_branches or (sucursal_id == 0))
+    emp_id, suc_id = db.resolve_user_scope(user["id"], empresa_id, sucursal_id, allow_all_branches=allow_all)
+    conn = db.get_conn()
+    branch_rows = conn.execute("SELECT id, nombre FROM sucursales WHERE empresa_id = ?", (emp_id,)).fetchall()
+    branches_map = {int(b["id"]): b["nombre"] for b in branch_rows}
+
+    conds = ["empresa_id = ?"]
+    params: list = [emp_id]
+    if suc_id:
+        conds.append("sucursal_id = ?")
+        params.append(suc_id)
+    rows = conn.execute(
+        f"""
+        SELECT sucursal_id, codigo_empleado, nombre, codigo_contpaqi, area_nombre, puesto, turno, horario_id
+        FROM empleados
+        WHERE {' AND '.join(conds)}
+        ORDER BY id ASC
+        """,
+        tuple(params)
+    ).fetchall()
+    tpl_rows = conn.execute(
+        "SELECT id, nombre FROM horarios WHERE empresa_id = ? AND COALESCE(es_plantilla, 1) = 1",
+        (emp_id,)
+    ).fetchall()
+    tpl_map = {int(t["id"]): t["nombre"] for t in tpl_rows}
+    conn.close()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf, lineterminator="\r\n")
+    writer.writerow(["codigo_empleado", "nombre", "codigo_contpaqi", "area_nombre", "puesto", "turno", "horario_nombre", "sucursal_base"])
+    for r in rows:
+        hid = r["horario_id"] if "horario_id" in r.keys() else None
+        h_name = tpl_map.get(int(hid), "") if hid is not None else ""
+        b_name = branches_map.get(int(r["sucursal_id"] or 0), "")
+        writer.writerow([
+            str(r["codigo_empleado"] or "").strip(),
+            str(r["nombre"] or "").strip(),
+            str(r["codigo_contpaqi"] or "").strip(),
+            str(r["area_nombre"] or "").strip(),
+            str(r["puesto"] or "").strip(),
+            str(r["turno"] or "").strip(),
+            str(h_name or "").strip(),
+            str(b_name or "").strip(),
+        ])
+
+    csv_bytes = buf.getvalue().encode("utf-8-sig")
+    filename = f"plantilla_empleados_{'empresa_' + str(emp_id) if not suc_id else 'sucursal_' + str(suc_id)}.csv"
+    return Response(
+        content=csv_bytes,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+def _decode_csv_text(raw_bytes: bytes) -> str:
+    for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+        try:
+            return raw_bytes.decode(enc).lstrip("\ufeff")
+        except UnicodeDecodeError:
+            continue
+    return raw_bytes.decode("utf-8", errors="replace").lstrip("\ufeff")
+
+
+def _parse_employees_csv_text(csv_text: str) -> list:
+    lines = [ln for ln in csv_text.splitlines() if ln.strip()]
+    if not lines:
+        return []
+    header_line = lines[0]
+    delimiter = ";" if header_line.count(";") > header_line.count(",") else ","
+    reader = csv.DictReader(io.StringIO(csv_text), delimiter=delimiter)
+    if not reader.fieldnames:
+        return []
+
+    alias_map = {
+        "codigo": "codigo_empleado",
+        "id": "codigo_empleado",
+        "id_reloj": "codigo_empleado",
+        "area": "area_nombre",
+        "contpaqi": "codigo_contpaqi",
+        "horario": "horario_nombre"
+    }
+    normalized_rows = []
+    for raw_row in reader:
+        norm: Dict[str, Any] = {}
+        for k, v in raw_row.items():
+            if k is None:
+                continue
+            clean_k = str(k).strip().lower().lstrip("\ufeff")
+            norm[clean_k] = v.strip() if isinstance(v, str) else v
+        for alias_k, target_k in alias_map.items():
+            if target_k not in norm and alias_k in norm:
+                norm[target_k] = norm[alias_k]
+        if any(str(val or "").strip() for val in norm.values()):
+            normalized_rows.append(norm)
+    return normalized_rows
+
+
+@app.post("/api/employees/import-csv")
+async def api_employees_import_csv(
+    request: Request,
+    empresa_id: Optional[int] = None,
+    sucursal_id: Optional[int] = None,
+    user: Dict[str, Any] = Depends(require_rh_active)
+):
+    """
+    Importa/actualiza colaboradores desde un archivo CSV (multipart/form-data o contenido texto),
+    detectando automáticamente delimitador ',' o ';' y propagando nombre y área hacia checadas.
+    """
+    content_type = (request.headers.get("content-type") or "").lower()
+    req_emp_id: Optional[Any] = empresa_id
+    req_suc_id: Optional[Any] = sucursal_id
+    csv_text = ""
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        if req_emp_id is None and form.get("empresa_id"):
+            req_emp_id = form.get("empresa_id")
+        if req_suc_id is None and form.get("sucursal_id"):
+            req_suc_id = form.get("sucursal_id")
+
+        file_field = form.get("file")
+        if file_field is None:
+            for _, v in form.items():
+                if hasattr(v, "read"):
+                    file_field = v
+                    break
+        if file_field is not None and hasattr(file_field, "read"):
+            raw_bytes = await file_field.read()
+            csv_text = _decode_csv_text(raw_bytes)
+        elif isinstance(form.get("csv_content"), str):
+            csv_text = str(form.get("csv_content")).lstrip("\ufeff")
+    elif "application/json" in content_type:
+        payload = await request.json()
+        if isinstance(payload, dict):
+            req_emp_id = req_emp_id if req_emp_id is not None else payload.get("empresa_id")
+            req_suc_id = req_suc_id if req_suc_id is not None else payload.get("sucursal_id")
+            csv_text = str(payload.get("csv_content") or payload.get("csv") or "").lstrip("\ufeff")
+    else:
+        raw_bytes = await request.body()
+        csv_text = _decode_csv_text(raw_bytes)
+
+    if not csv_text.strip():
+        raise HTTPException(status_code=400, detail="El archivo o contenido CSV está vacío.")
+
+    parsed_rows = _parse_employees_csv_text(csv_text)
+    if not parsed_rows or not any("codigo_empleado" in r for r in parsed_rows):
+        raise HTTPException(
+            status_code=400,
+            detail="Formato CSV inválido. Asegúrate de conservar la columna 'codigo_empleado'."
+        )
+
+    parsed_suc_id = int(req_suc_id) if req_suc_id not in (None, "", "null") else None
+    emp_id, suc_id = db.resolve_user_scope(
+        user["id"],
+        int(req_emp_id) if req_emp_id not in (None, "", "null") else None,
+        parsed_suc_id,
+        allow_all_branches=(parsed_suc_id == 0)
+    )
+    res = db.import_employees_from_csv_rows(emp_id, suc_id, parsed_rows)
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("error", "No se pudo importar el CSV."))
+
+    return {
+        "ok": True,
+        "status": "success",
+        **res,
+        "message": (
+            f"Importación completada: {res['updated_employees']} actualizado(s), "
+            f"{res['created_employees']} creado(s) y {res['updated_checkins']} checada(s) sincronizadas."
+        )
     }
 
 
@@ -1128,15 +1539,86 @@ async def api_delete_employee(
     sucursal_id: Optional[int] = None,
     user: Dict[str, Any] = Depends(require_rh_active)
 ):
-    emp_id, suc_id = db.resolve_user_scope(user["id"], empresa_id, sucursal_id)
+    emp_id, _ = db.resolve_user_scope(user["id"], empresa_id, sucursal_id, allow_all_branches=True)
     conn = db.get_conn()
-    conn.execute(
-        "DELETE FROM empleados WHERE empresa_id = ? AND sucursal_id = ? AND codigo_empleado = ?",
-        (emp_id, suc_id, str(emp_no))
+    cur = conn.cursor()
+    row = cur.execute(
+        "SELECT horario_id FROM empleados WHERE empresa_id = ? AND codigo_empleado = ?",
+        (emp_id, str(emp_no))
+    ).fetchone()
+    old_hid = row["horario_id"] if row and "horario_id" in row.keys() else None
+    cur.execute(
+        "DELETE FROM empleados WHERE empresa_id = ? AND codigo_empleado = ?",
+        (emp_id, str(emp_no))
     )
+    if old_hid:
+        db.cleanup_orphan_custom_schedule(cur, old_hid, emp_id)
     conn.commit()
     conn.close()
     return {"ok": True, "status": "success"}
+
+
+# --- HORARIOS FLEXIBLES MULTI-BLOQUE ---
+
+@app.get("/api/schedules")
+async def api_get_schedules(
+    empresa_id: Optional[int] = None,
+    sucursal_id: Optional[int] = None,
+    include_custom: bool = False,
+    user: Dict[str, Any] = Depends(require_rh_active)
+):
+    emp_id, suc_id = db.resolve_user_scope(user["id"], empresa_id, sucursal_id)
+    if not emp_id:
+        return {"status": "success", "schedules": []}
+    schedules = db.get_schedules_for_branch(emp_id, suc_id, include_custom=include_custom)
+    return {"status": "success", "schedules": schedules}
+
+
+@app.post("/api/schedules")
+async def api_save_schedule(
+    payload: Dict[str, Any] = Body(...),
+    user: Dict[str, Any] = Depends(require_rh_active)
+):
+    req_emp_id = payload.get("empresa_id")
+    req_suc_id = payload.get("sucursal_id")
+    emp_id, suc_id = db.resolve_user_scope(user["id"], req_emp_id, req_suc_id)
+    if not emp_id or not suc_id:
+        raise HTTPException(status_code=400, detail="Selecciona una empresa y sucursal válidas.")
+
+    res = db.save_schedule(emp_id, suc_id, payload)
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("error", "No se pudo guardar el horario."))
+    return {
+        "ok": True,
+        "status": "success",
+        "schedule": res["schedule"],
+        "message": f"Horario '{res['schedule']['nombre']}' guardado correctamente."
+    }
+
+
+@app.delete("/api/schedules/{schedule_id}")
+async def api_delete_schedule(
+    schedule_id: int,
+    user: Dict[str, Any] = Depends(require_rh_active)
+):
+    conn = db.get_conn()
+    row = conn.execute("SELECT empresa_id FROM horarios WHERE id = ?", (schedule_id,)).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Horario no encontrado.")
+    if not db.user_has_company_access(user["id"], row["empresa_id"]):
+        raise HTTPException(status_code=403, detail="Sin permiso para eliminar este horario.")
+
+    res = db.delete_schedule(schedule_id, row["empresa_id"])
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("error", "No se pudo eliminar el horario."))
+    unlinked = res.get("unlinked_employees", 0)
+    msg = (
+        f"Horario eliminado. {unlinked} colaborador(es) pasaron a heredar el horario de su área."
+        if unlinked > 0
+        else "Horario eliminado correctamente."
+    )
+    return {"ok": True, "status": "success", "unlinked_employees": unlinked, "message": msg}
 
 
 # --- ÁREAS Y TURNOS ---
@@ -1154,7 +1636,9 @@ async def api_get_areas(
     if suc_id:
         conds.append("sucursal_id = ?")
         params.append(suc_id)
-    areas = [_enrich_area(r, conn) for r in conn.execute(f"SELECT * FROM areas WHERE {' AND '.join(conds)} ORDER BY id ASC", tuple(params)).fetchall()]
+    default_tol = int(db.get_setting("tolerancia_minutos", 10, user_id=user["id"]) or 10)
+    resolver = db.build_schedule_resolver(conn, emp_id, suc_id, default_tol=default_tol)
+    areas = [_enrich_area(r, conn, resolver) for r in conn.execute(f"SELECT * FROM areas WHERE {' AND '.join(conds)} ORDER BY id ASC", tuple(params)).fetchall()]
     conn.close()
     return {"status": "success", "areas": areas}
 
@@ -1173,32 +1657,173 @@ async def api_create_area(
     nombre = (payload.get("nombre") or "").strip()
     responsable = (payload.get("responsable") or "Por asignar").strip()
     turno = (payload.get("turno") or "Matutino").strip()
-    hora_in = (payload.get("hora_entrada") or "08:00").strip()
-    hora_out = (payload.get("hora_salida") or "17:00").strip()
-    horario = payload.get("horario") or f"{hora_in} - {hora_out}"
-    tolerancia_min = int(payload.get("tolerancia_min", 10))
-    dias_laborales = str(payload.get("dias_laborales") or "1,2,3,4,5").strip()
+    prefijo_id = str(payload.get("prefijo_id") or "").strip()
     ubicacion = (payload.get("reloj_asignado") or payload.get("ubicacion") or "Sucursal Activa").strip()
 
     if not nombre:
         raise HTTPException(status_code=400, detail="El nombre del área es obligatorio.")
 
     conn = db.get_conn()
-    cur = conn.cursor()
-    if area_id:
-        cur.execute("""
-            UPDATE areas
-            SET codigo = ?, nombre = ?, responsable = ?, turno = ?, horario = ?, tolerancia_min = ?, dias_laborales = ?, ubicacion = ?
-            WHERE id = ? AND empresa_id = ?
-        """, (codigo, nombre, responsable, turno, horario, tolerancia_min, dias_laborales, ubicacion, int(area_id), emp_id))
-    else:
-        cur.execute("""
-            INSERT INTO areas (empresa_id, sucursal_id, codigo, nombre, responsable, turno, horario, tolerancia_min, dias_laborales, ubicacion)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (emp_id, suc_id, codigo, nombre, responsable, turno, horario, tolerancia_min, dias_laborales, ubicacion))
-    conn.commit()
-    conn.close()
+    try:
+        cur = conn.cursor()
+        old_row = None
+        if area_id:
+            old_row = cur.execute(
+                "SELECT id, nombre, sucursal_id, horario_id FROM areas WHERE id = ? AND empresa_id = ?",
+                (int(area_id), emp_id)
+            ).fetchone()
+            if not old_row:
+                raise HTTPException(status_code=404, detail="Área no encontrada.")
+
+        raw_hid = payload.get("horario_id")
+        has_inline_schedule = bool(
+            raw_hid == "__simple__"
+            or (payload.get("horario") is not None and str(payload.get("horario")).strip() != "")
+            or (payload.get("hora_entrada") is not None and str(payload.get("hora_entrada")).strip() != "")
+        )
+        use_template = raw_hid not in (None, "", "__simple__", "null")
+
+        if use_template:
+            try:
+                target_hid_int = int(raw_hid)
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=400, detail="ID de horario inválido.")
+            sched = db.get_schedule_by_id(target_hid_int, emp_id, conn=conn)
+            if not sched:
+                raise HTTPException(status_code=400, detail="El horario seleccionado no existe en esta empresa.")
+            horario_id = int(sched["id"])
+            horario = sched["resumen_corto"]
+            dias_laborales = sched["dias_laborales"]
+            tolerancia_min = int(sched["tolerancia_min"])
+        elif not has_inline_schedule:
+            target_suc = suc_id or (old_row["sucursal_id"] if old_row else 1) or 1
+            default_hid = db.get_default_schedule_id_for_branch(conn, emp_id, target_suc)
+            sched = db.get_schedule_by_id(default_hid, emp_id, conn=conn)
+            horario_id = int(sched["id"])
+            horario = sched["resumen_corto"]
+            dias_laborales = sched["dias_laborales"]
+            tolerancia_min = int(sched["tolerancia_min"])
+        else:
+            hora_in = (payload.get("hora_entrada") or "08:00").strip()
+            hora_out = (payload.get("hora_salida") or "17:00").strip()
+            horario_raw = payload.get("horario") or f"{hora_in} - {hora_out}"
+            tolerancia_min = max(0, int(payload.get("tolerancia_min", 10)))
+            dias_raw = str(payload.get("dias_laborales") or "1,2,3,4,5").strip()
+            t_ent, t_sal = db.parse_horario(horario_raw)
+            if not t_ent or not t_sal or t_ent >= t_sal:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El horario rápido debe tener formato HH:MM - HH:MM con entrada menor a salida."
+                )
+            dias_list = sorted({
+                int(x.strip()) for x in dias_raw.split(",")
+                if x.strip().isdigit() and 1 <= int(x.strip()) <= 7
+            }) or [1, 2, 3, 4, 5]
+            simple_blocks = [
+                {
+                    "dia_semana": d_num,
+                    "hora_entrada": t_ent.strftime("%H:%M"),
+                    "hora_salida": t_sal.strftime("%H:%M")
+                }
+                for d_num in dias_list
+            ]
+            target_edit_hid = None
+            if old_row and old_row["horario_id"]:
+                other_cnt = cur.execute(
+                    "SELECT COUNT(*) as c FROM areas WHERE empresa_id = ? AND horario_id = ? AND id != ?",
+                    (emp_id, int(old_row["horario_id"]), int(area_id))
+                ).fetchone()["c"]
+                if int(other_cnt) == 0:
+                    target_edit_hid = int(old_row["horario_id"])
+
+            save_res = db.save_schedule(
+                emp_id,
+                suc_id or (old_row["sucursal_id"] if old_row else 1),
+                {
+                    "id": target_edit_hid,
+                    "nombre": f"{turno} — {nombre}",
+                    "descripcion": f"Horario base de {nombre}",
+                    "tolerancia_min": tolerancia_min,
+                    "es_plantilla": 1,
+                    "bloques": simple_blocks
+                },
+                conn=conn
+            )
+            if not save_res.get("ok"):
+                raise HTTPException(status_code=400, detail=save_res.get("error", "No se pudo guardar el horario del área."))
+            horario_id = int(save_res["id"])
+            horario = save_res["schedule"]["resumen_corto"]
+            dias_laborales = save_res["schedule"]["dias_laborales"]
+
+        if area_id and old_row:
+            cur.execute("""
+                UPDATE areas
+                SET codigo = ?, nombre = ?, responsable = ?, turno = ?, horario = ?, tolerancia_min = ?, dias_laborales = ?, prefijo_id = ?, horario_id = ?, ubicacion = ?
+                WHERE id = ? AND empresa_id = ?
+            """, (codigo, nombre, responsable, turno, horario, tolerancia_min, dias_laborales, prefijo_id, horario_id, ubicacion, int(area_id), emp_id))
+
+            old_nombre = (old_row["nombre"] or "").strip()
+            target_suc = old_row["sucursal_id"] or suc_id
+            if old_nombre and old_nombre != nombre:
+                cur.execute("""
+                    UPDATE empleados SET area_nombre = ?
+                    WHERE empresa_id = ? AND sucursal_id = ? AND area_nombre = ?
+                """, (nombre, emp_id, target_suc, old_nombre))
+                cur.execute("""
+                    UPDATE checadas SET area = ?
+                    WHERE empresa_id = ? AND area = ?
+                      AND codigo_empleado IN (
+                          SELECT codigo_empleado FROM empleados
+                          WHERE empresa_id = ? AND sucursal_id = ? AND area_nombre = ?
+                      )
+                """, (nombre, emp_id, old_nombre, emp_id, target_suc, nombre))
+                cur.execute("""
+                    UPDATE relojes SET area_asignada = ?
+                    WHERE empresa_id = ? AND sucursal_id = ? AND area_asignada = ?
+                """, (nombre, emp_id, target_suc, old_nombre))
+        else:
+            cur.execute("""
+                INSERT INTO areas (empresa_id, sucursal_id, codigo, nombre, responsable, turno, horario, tolerancia_min, dias_laborales, prefijo_id, horario_id, ubicacion)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (emp_id, suc_id, codigo, nombre, responsable, turno, horario, tolerancia_min, dias_laborales, prefijo_id, horario_id, ubicacion))
+        conn.commit()
+    except HTTPException:
+        conn._conn.rollback()
+        raise
+    except Exception:
+        conn._conn.rollback()
+        raise
+    finally:
+        conn.close()
     return {"ok": True, "status": "success", "message": f"Área '{nombre}' guardada correctamente."}
+
+
+@app.post("/api/areas/reapply-rules")
+async def api_reapply_area_rules(
+    payload: Dict[str, Any] = Body(default={}),
+    empresa_id: Optional[int] = None,
+    sucursal_id: Optional[int] = None,
+    user: Dict[str, Any] = Depends(require_rh_active)
+):
+    """
+    Re-evalúa todos los empleados actuales de la sucursal activa aplicando la cascada
+    de prefijos, reloj asignado y fallback de sucursal, propagando cambios a checadas.
+    """
+    req_emp_id = payload.get("empresa_id") if isinstance(payload, dict) and payload.get("empresa_id") is not None else empresa_id
+    req_suc_id = payload.get("sucursal_id") if isinstance(payload, dict) and payload.get("sucursal_id") is not None else sucursal_id
+    emp_id, suc_id = db.resolve_user_scope(user["id"], req_emp_id, req_suc_id)
+    res = db.reapply_area_rules_for_branch(empresa_id=emp_id, sucursal_id=suc_id)
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("error", "No se pudieron re-aplicar las reglas."))
+    return {
+        "ok": True,
+        "status": "success",
+        **res,
+        "message": (
+            f"Reglas aplicadas en sucursal: {res['updated_employees']} empleado(s) "
+            f"y {res['updated_checkins']} checada(s) actualizados (de {res['total_employees']} colaboradores)."
+        )
+    }
 
 
 @app.delete("/api/areas/{area_id}")
@@ -1293,15 +1918,12 @@ async def api_test_email(
                 continue
             cfg_override[k] = v
     now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-    html_test = f"""
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 540px; margin: 0 auto; padding: 28px; background: #ffffff; border-radius: 16px; border: 1px solid #e4e4e7;">
-        <div style="background: #18181b; color: white; padding: 16px 20px; border-radius: 12px; margin-bottom: 20px;">
-            <div style="font-size: 10px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; color: #a1a1aa;">ACCESS CLOUD</div>
-            <h2 style="margin: 4px 0 0 0; font-size: 18px; color: #ffffff;">Prueba de Conexión SMTP Exitosa</h2>
-        </div>
-        <p style="color: #3f3f46; font-size: 13px; line-height: 1.5;">Este es un mensaje de verificación generado desde <strong>ACCESS</strong> ({now_str}).</p>
-    </div>
-    """
+    html_test = mailer.generate_test_email_html(
+        smtp_host=(cfg_override.get("smtp_host") or "").strip(),
+        sender_email=(cfg_override.get("remitente_email") or cfg_override.get("smtp_user") or "").strip(),
+        recipient_email=test_to,
+        now_str=now_str
+    )
     res = await asyncio.to_thread(
         mailer.send_email_message,
         to_email=test_to,
@@ -1328,7 +1950,9 @@ async def api_query_report(
     sucursal_id: Optional[int] = None,
     user: Dict[str, Any] = Depends(require_rh_active)
 ):
-    emp_id, suc_id = db.resolve_user_scope(user["id"], empresa_id, sucursal_id)
+    emp_id, suc_id = db.resolve_user_scope(
+        user["id"], empresa_id, sucursal_id, allow_all_branches=(sucursal_id == 0)
+    )
     dataset = db.get_report_dataset(
         report_type=type,
         start_date=start_date,
@@ -1349,6 +1973,7 @@ async def api_export_contpaqi(
     sucursal_id: Optional[int] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    area_nombre: Optional[str] = None,
     tipo_periodo: str = "Quincenal",
     numero_periodo: int = 1,
     ejercicio: int = 2026,
@@ -1357,7 +1982,9 @@ async def api_export_contpaqi(
     concepto_extra: str = "Horas extras dobles",
     user: Dict[str, Any] = Depends(require_rh_active)
 ):
-    emp_id, suc_id = db.resolve_user_scope(user["id"], empresa_id, sucursal_id)
+    emp_id, suc_id = db.resolve_user_scope(
+        user["id"], empresa_id, sucursal_id, allow_all_branches=(sucursal_id == 0)
+    )
     txt_content = db.generate_contpaqi_txt(
         empresa_id=emp_id,
         sucursal_id=suc_id,
@@ -1370,7 +1997,8 @@ async def api_export_contpaqi(
             "falta": concepto_falta,
             "retardo": concepto_retardo,
             "horas_extra": concepto_extra
-        }
+        },
+        area_nombre=area_nombre
     )
     try:
         txt_bytes = txt_content.encode("cp1252", errors="replace")
@@ -1404,7 +2032,14 @@ async def api_send_report_email(
     status_filter = payload.get("status")
     attach_csv = payload.get("attach_csv", True)
 
-    emp_id, suc_id = db.resolve_user_scope(user["id"], payload.get("empresa_id"), payload.get("sucursal_id"))
+    req_suc_id = payload.get("sucursal_id")
+    parsed_suc_id = int(req_suc_id) if req_suc_id not in (None, "", "null") else None
+    emp_id, suc_id = db.resolve_user_scope(
+        user["id"],
+        payload.get("empresa_id"),
+        parsed_suc_id,
+        allow_all_branches=(parsed_suc_id == 0)
+    )
 
     cfg = db.get_email_config(mask_password=False, user_id=user["id"])
     if not to_email:

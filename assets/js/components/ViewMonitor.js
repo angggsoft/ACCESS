@@ -9,6 +9,8 @@ export default {
     records: { type: Array, default: () => [] },
     summary: { type: Object, default: () => ({}) },
     employees: { type: Array, default: () => [] },
+    empresaId: { type: [Number, String, null], default: null },
+    sucursalId: { type: [Number, String, null], default: null },
     isSyncing: { type: Boolean, default: false },
     lastUpdated: { type: String, default: '' }
   },
@@ -55,7 +57,11 @@ export default {
         const res = await fetch('/api/attendance/manual', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(manualForm.value)
+          body: JSON.stringify({
+            ...manualForm.value,
+            empresa_id: props.empresaId,
+            sucursal_id: props.sucursalId
+          })
         });
         const data = await res.json();
         if (res.ok && data.status === 'success') {
@@ -280,7 +286,7 @@ export default {
                       <i class="ph ph-clock-countdown text-sm"></i>
                       {{ rec.estatus_prenomina }}
                     </span>
-                    <span v-else-if="rec.estatus_prenomina === 'PUNTUAL'" class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-charcoal-900">
+                    <span v-else-if="rec.estatus_prenomina && rec.estatus_prenomina.startsWith('PUNTUAL')" class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-charcoal-900">
                       <i class="ph ph-check-circle text-sm"></i>
                       PUNTUAL
                     </span>
@@ -299,9 +305,9 @@ export default {
         </div>
       </div>
 
-      <!-- MODAL CHECADA MANUAL / JUSTIFICACIÓN -->
-      <div v-if="showManualModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-        <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-charcoal-200 space-y-4">
+      <!-- MODAL CHECADA MANUAL / JUSTIFICACIÓN (DISTRIBUCIÓN HORIZONTAL AMPLIA) -->
+      <div v-if="showManualModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop-anim animate-in fade-in duration-200">
+        <div class="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-charcoal-200 space-y-5">
           <div class="flex items-center justify-between pb-3 border-b border-charcoal-100">
             <div class="flex items-center gap-2.5">
               <span class="w-5 flex items-center justify-center shrink-0"><i class="ph ph-pencil-simple-line text-lg text-charcoal-400"></i></span>
@@ -316,27 +322,29 @@ export default {
           </div>
 
           <form @submit.prevent="submitManualCheckin" class="space-y-4">
-            <!-- Empleado -->
-            <div>
-              <label class="block text-xs font-bold text-charcoal-700 mb-1">Colaborador</label>
-              <select
-                v-model="manualForm.codigo_empleado"
-                required
-                class="w-full h-10 px-3 rounded-2xl border border-charcoal-200 bg-white text-xs font-semibold focus:ring-2 focus:ring-black focus:outline-none">
-                <option v-for="emp in employees" :key="emp.codigo_empleado" :value="emp.codigo_empleado">
-                  #{{ emp.codigo_empleado }} — {{ emp.nombre }} ({{ emp.area_nombre || emp.area }})
-                </option>
-              </select>
-            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <!-- Empleado -->
+              <div>
+                <label class="block text-xs font-bold text-charcoal-700 mb-1">Colaborador</label>
+                <select
+                  v-model="manualForm.codigo_empleado"
+                  required
+                  class="w-full h-10 px-3 rounded-2xl border border-charcoal-200 bg-white text-xs font-semibold focus:ring-2 focus:ring-black focus:outline-none">
+                  <option v-for="emp in employees" :key="emp.codigo_empleado" :value="emp.codigo_empleado">
+                    #{{ emp.codigo_empleado }} — {{ emp.nombre }} ({{ emp.area_nombre || emp.area }})
+                  </option>
+                </select>
+              </div>
 
-            <!-- Fecha y Hora -->
-            <div>
-              <label class="block text-xs font-bold text-charcoal-700 mb-1">Fecha y Hora del Evento</label>
-              <input
-                type="datetime-local"
-                v-model="manualForm.fecha_hora_evento"
-                required
-                class="w-full h-10 px-3 rounded-2xl border border-charcoal-200 bg-white text-xs font-semibold focus:ring-2 focus:ring-black focus:outline-none">
+              <!-- Fecha y Hora -->
+              <div>
+                <label class="block text-xs font-bold text-charcoal-700 mb-1">Fecha y Hora del Evento</label>
+                <input
+                  type="datetime-local"
+                  v-model="manualForm.fecha_hora_evento"
+                  required
+                  class="w-full h-10 px-3 rounded-2xl border border-charcoal-200 bg-white text-xs font-semibold focus:ring-2 focus:ring-black focus:outline-none">
+              </div>
             </div>
 
             <!-- Justificación / Nota -->

@@ -33,7 +33,7 @@ def run_tests():
     print("3. Expired RH user blocked (402):", r_exp_dash.json()["detail"])
 
     # 3. Owner RH user & 5-minute Dynamic Invitation Key (TOTP)
-    r_owner = client.post("/api/auth/login", json={"email": "angel.flores@quodo.mx", "password": "123456"})
+    r_owner = client.post("/api/auth/login", json={"email": "rh@quodo.mx", "password": "quodo123"})
     assert r_owner.status_code == 200
     owner_tok = r_owner.json()["token"]
     h_owner = {"Authorization": f"Bearer {owner_tok}"}
@@ -48,14 +48,14 @@ def run_tests():
     print("4. Company #2 TOTP generated:", inv["codigo_invitacion"], "Key:", inv["clave_dinamica"], "Expires in:", inv["expires_in_seconds"], "s")
 
     # 4. Second RH user joining Company #2 with Dynamic Key
-    r_areli = client.post("/api/auth/login", json={"email": "areli.martinez@quodo.mx", "password": "admin123"})
-    areli_tok = r_areli.json()["token"]
-    h_areli = {"Authorization": f"Bearer {areli_tok}"}
+    r_guest = client.post("/api/auth/login", json={"email": "invitado@quodo.mx", "password": "admin123"})
+    guest_tok = r_guest.json()["token"]
+    h_guest = {"Authorization": f"Bearer {guest_tok}"}
 
     r_bad_join = client.post(
         "/api/companies/join",
         json={"codigo_invitacion": inv["codigo_invitacion"], "clave_dinamica": "000000"},
-        headers=h_areli
+        headers=h_guest
     )
     assert r_bad_join.status_code == 400
     print("5. Invalid TOTP key rejected:", r_bad_join.json()["detail"])
@@ -63,7 +63,7 @@ def run_tests():
     r_good_join = client.post(
         "/api/companies/join",
         json={"codigo_invitacion": inv["codigo_invitacion"], "clave_dinamica": inv["clave_dinamica"]},
-        headers=h_areli
+        headers=h_guest
     )
     assert r_good_join.status_code == 200
     print("6. Valid 5-min TOTP key accepted:", r_good_join.json()["message"])
@@ -81,7 +81,7 @@ def run_tests():
   </AccessControllerEvent>
 </EventNotificationAlert>"""
     r_wh = client.post(
-        "/api/v1/webhooks/hikvision/hik_cerrogordo_01",
+        "/api/v1/webhooks/hikvision/hik_principal_01",
         content=xml_push.encode("utf-8"),
         headers={"Content-Type": "application/xml"}
     )

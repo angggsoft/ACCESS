@@ -15,11 +15,11 @@ export default {
     areas: { type: Array, default: () => [] },
     period: { type: String, default: '14d' },
     isSyncing: { type: Boolean, default: false },
-    user: { type: Object, default: () => ({ name: 'Angel Flores' }) }
+    user: { type: Object, default: () => ({ name: 'Operador' }) }
   },
   emits: ['navigate', 'sync-clock'],
   setup(props) {
-    const firstName = computed(() => (props.user?.name || 'Angel').split(' ')[0]);
+    const firstName = computed(() => (props.user?.name || 'Operador').split(' ')[0]);
     const hoveredIndex = ref(null);
 
     const periodLabel = computed(() => {

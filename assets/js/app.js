@@ -49,7 +49,7 @@ const App = {
     // Estado de Sesión, Rol y Suscripción
     const currentUser = ref({
       id: 1,
-      name: localStorage.getItem('quodo_access_user') || 'Angel Flores',
+      name: localStorage.getItem('quodo_access_user') || 'Operador RH',
       role: 'Director de RH y Operaciones',
       role_type: 'CLIENTE_RH',
       avatar: 'AF',
@@ -71,7 +71,8 @@ const App = {
     // Estado Multi-Empresa y Multi-Sucursal
     const companies = ref([]);
     const activeCompanyId = ref(Number(localStorage.getItem('access_company_id')) || null);
-    const activeBranchId = ref(Number(localStorage.getItem('access_branch_id')) || null);
+    const rawSavedBranch = localStorage.getItem('access_branch_id');
+    const activeBranchId = ref(rawSavedBranch === '0' ? 0 : (Number(rawSavedBranch) || null));
 
     const activeCompany = computed(() => {
       return companies.value.find(c => c.id === activeCompanyId.value) || companies.value[0] || {
@@ -84,12 +85,23 @@ const App = {
     });
 
     const activeBranch = computed(() => {
+      if (activeBranchId.value === 0) {
+        return {
+          id: 0,
+          nombre: 'Todas las sucursales',
+          ubicacion: 'Consolidado de empresa'
+        };
+      }
       const sucs = activeCompany.value?.sucursales || [];
       return sucs.find(s => s.id === activeBranchId.value) || sucs[0] || {
         id: null,
         nombre: 'Sin sucursal',
         ubicacion: ''
       };
+    });
+
+    const activeCompanyBranches = computed(() => {
+      return activeCompany.value?.sucursales || [];
     });
 
     // Periodo activo del Dashboard (hoy | 7d | 14d | 30d | mes | all)
@@ -133,6 +145,11 @@ const App = {
     const devices = ref([]);
     const employees = ref([]);
     const areas = ref([]);
+    const schedules = ref([]);
+    const companyEmployees = ref([]);
+    const companyAreas = ref([]);
+    const companySchedules = ref([]);
+    const companyDevices = ref([]);
 
     // Toast & Dynamic Island Notifications
     const toast = ref({
@@ -157,7 +174,7 @@ const App = {
     const primaryClock = computed(() => {
       return devices.value[0] || {
         id: 1,
-        nombre: activeBranch.value?.nombre || 'Cerro Gordo',
+        nombre: activeBranch.value?.nombre || 'Sucursal Principal',
         ip: 'Push Cloud',
         ubicacion: activeBranch.value?.ubicacion || 'Acceso Principal'
       };
@@ -199,8 +216,12 @@ const App = {
           companies.value = data.companies;
           const validComp = data.companies.find(c => c.id === activeCompanyId.value) || data.companies[0];
           activeCompanyId.value = validComp.id;
-          const validSuc = (validComp.sucursales || []).find(s => s.id === activeBranchId.value) || (validComp.sucursales || [])[0];
-          activeBranchId.value = validSuc ? validSuc.id : null;
+          if (activeBranchId.value === 0 && (validComp.sucursales || []).length > 0) {
+            activeBranchId.value = 0;
+          } else {
+            const validSuc = (validComp.sucursales || []).find(s => s.id === activeBranchId.value) || (validComp.sucursales || [])[0];
+            activeBranchId.value = validSuc ? validSuc.id : null;
+          }
         }
       } catch (e) {
         console.error(e);
@@ -212,7 +233,9 @@ const App = {
       try {
         const q = new URLSearchParams();
         if (activeCompanyId.value) q.set('empresa_id', String(activeCompanyId.value));
-        if (activeBranchId.value) q.set('sucursal_id', String(activeBranchId.value));
+        if (activeBranchId.value !== null && activeBranchId.value !== undefined) {
+          q.set('sucursal_id', String(activeBranchId.value));
+        }
 
         const res = await fetch(`/api/dashboard/overview?${q.toString()}`);
         if (!res.ok) return;
@@ -225,7 +248,7 @@ const App = {
           activeCompanyId.value = data.active_empresa_id;
           localStorage.setItem('access_company_id', String(data.active_empresa_id));
         }
-        if (data.active_sucursal_id) {
+        if (data.active_sucursal_id !== null && data.active_sucursal_id !== undefined) {
           activeBranchId.value = data.active_sucursal_id;
           localStorage.setItem('access_branch_id', String(data.active_sucursal_id));
         }
@@ -242,6 +265,11 @@ const App = {
         if (Array.isArray(data.devices)) devices.value = data.devices;
         if (Array.isArray(data.employees)) employees.value = data.employees;
         if (Array.isArray(data.areas)) areas.value = data.areas;
+        if (Array.isArray(data.schedules)) schedules.value = data.schedules;
+        companyEmployees.value = Array.isArray(data.company_employees) ? data.company_employees : (data.employees || []);
+        companyAreas.value = Array.isArray(data.company_areas) ? data.company_areas : (data.areas || []);
+        companySchedules.value = Array.isArray(data.company_schedules) ? data.company_schedules : (data.schedules || []);
+        companyDevices.value = Array.isArray(data.company_devices) ? data.company_devices : (data.devices || []);
 
         if (Array.isArray(data.recent_records)) {
           const newest = data.recent_records[0];
@@ -284,9 +312,13 @@ const App = {
       activeCompanyId.value = empresaId;
       localStorage.setItem('access_company_id', String(empresaId));
       const comp = companies.value.find(c => c.id === empresaId);
-      const branchId = sucursalId || (comp?.sucursales?.[0]?.id) || null;
+      const branchId = (sucursalId === 0)
+        ? 0
+        : (sucursalId || (comp?.sucursales?.[0]?.id) || null);
       activeBranchId.value = branchId;
-      if (branchId) localStorage.setItem('access_branch_id', String(branchId));
+      if (branchId !== null && branchId !== undefined) {
+        localStorage.setItem('access_branch_id', String(branchId));
+      }
       lastTopRecordId = null;
       await fetchOverview(false);
       showToast({
@@ -476,6 +508,7 @@ const App = {
       activeBranchId,
       activeCompany,
       activeBranch,
+      activeCompanyBranches,
       selectCompanyScope,
       handleRefreshCompanies,
       summary,
@@ -486,6 +519,11 @@ const App = {
       devices,
       employees,
       areas,
+      schedules,
+      companyEmployees,
+      companyAreas,
+      companySchedules,
+      companyDevices,
       toast,
       currentUser,
       isAdminSaas,
@@ -615,7 +653,9 @@ const App = {
               v-else-if="activeModule === 'monitor'"
               :records="periodRecords"
               :summary="summary"
-              :employees="employees"
+              :employees="companyEmployees"
+              :empresa-id="activeCompany.id"
+              :sucursal-id="activeBranch.id"
               :is-syncing="isSyncing"
               @sync-clock="refreshDashboard"
               @export-csv="exportRecordsCsv"
@@ -639,8 +679,12 @@ const App = {
             <ViewEmpleados
               v-else-if="activeModule === 'empleados'"
               ref="empleadosRef"
-              :employees="employees"
+              :employees="companyEmployees"
               :areas="areas"
+              :schedules="schedules"
+              :branches="activeCompanyBranches"
+              :company-areas="companyAreas"
+              :company-schedules="companySchedules"
               :empresa-id="activeCompany.id"
               :sucursal-id="activeBranch.id"
               @refresh="fetchOverview(false)"
@@ -651,6 +695,7 @@ const App = {
               v-else-if="activeModule === 'areas'"
               ref="areasRef"
               :areas="areas"
+              :schedules="schedules"
               :companies="companies"
               :empresa-id="activeCompany.id"
               :sucursal-id="activeBranch.id"
@@ -665,9 +710,12 @@ const App = {
               v-else-if="activeModule === 'reportes'"
               ref="reportesRef"
               :records="records"
-              :employees="employees"
+              :employees="companyEmployees"
               :devices="devices"
               :areas="areas"
+              :branches="activeCompanyBranches"
+              :company-areas="companyAreas"
+              :company-devices="companyDevices"
               :summary="summary"
               :empresa-id="activeCompany.id"
               :sucursal-id="activeBranch.id"

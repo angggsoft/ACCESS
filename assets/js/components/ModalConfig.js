@@ -13,11 +13,11 @@ export default {
     user: {
       type: Object,
       default: () => ({
-        name: 'Angel Flores',
-        role: 'Ingeniero de Sistemas y Hardware',
-        email: 'angel.flores@quodo.mx',
+        name: 'Operador RH',
+        role: 'Director de RH y Sistemas',
+        email: 'rh@quodo.mx',
         shift: 'Mixto (08:00 - 17:30)',
-        node: 'Cerro Gordo • Terminal #01'
+        node: 'Sucursal Principal • Terminal #01'
       })
     }
   },
@@ -34,7 +34,7 @@ export default {
       smtp_security: 'STARTTLS',
       smtp_user: '',
       smtp_password: '',
-      remitente_nombre: 'ACCESS - Control Biométrico',
+      remitente_nombre: 'notificaciones@access.com',
       remitente_email: '',
       destinatario_default: '',
       is_configured: false,
@@ -202,7 +202,7 @@ export default {
     <ModalBase
       v-if="isOpen"
       title="Ajustes y Configuración"
-      size="lg"
+      size="xl"
       confirmLabel="Listo"
       @close="$emit('close')"
       @confirm="$emit('close')">
@@ -229,7 +229,7 @@ export default {
         <div class="flex items-center gap-3.5">
           <div>
             <div class="text-base text-charcoal-700">Hola, <b class="font-bold text-charcoal-900">{{ user.name }}</b></div>
-            <div class="text-xs text-charcoal-500">{{ user.role }} • {{ user.node || 'Cerro Gordo' }}</div>
+            <div class="text-xs text-charcoal-500">{{ user.role }} • {{ user.node || 'Sucursal Principal' }}</div>
           </div>
         </div>
 
@@ -240,7 +240,7 @@ export default {
           </div>
           <div class="flex justify-between text-charcoal-600">
             <span>Correo Oficial:</span>
-            <b class="text-charcoal-900 font-mono">{{ user.email || 'angel.flores@quodo.mx' }}</b>
+            <b class="text-charcoal-900 font-mono">{{ user.email || 'rh@quodo.mx' }}</b>
           </div>
         </div>
       </div>
@@ -341,7 +341,7 @@ export default {
             <input
               type="text"
               v-model="emailForm.remitente_nombre"
-              placeholder="ACCESS - Control Biométrico"
+              placeholder="notificaciones@access.com"
               class="w-full h-9 px-3 rounded-xl border border-charcoal-200 bg-white text-xs focus:ring-2 focus:ring-black focus:outline-none"
             />
           </div>

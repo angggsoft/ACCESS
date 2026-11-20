@@ -264,7 +264,7 @@ export default {
     <ModalBase
       v-if="isOpen"
       title="Centro Multi-Empresa, Sucursales y Acceso Seguro"
-      size="lg"
+      size="xl"
       confirmLabel="Cerrar"
       @close="$emit('close')"
       @confirm="$emit('close')">

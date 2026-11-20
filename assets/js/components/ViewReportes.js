@@ -12,6 +12,9 @@ export default {
     employees: { type: Array, default: () => [] },
     devices: { type: Array, default: () => [] },
     areas: { type: Array, default: () => [] },
+    branches: { type: Array, default: () => [] },
+    companyAreas: { type: Array, default: () => [] },
+    companyDevices: { type: Array, default: () => [] },
     summary: { type: Object, default: () => ({}) },
     empresaId: { type: [Number, String, null], default: null },
     sucursalId: { type: [Number, String, null], default: null }
@@ -32,11 +35,42 @@ export default {
     const datePreset = ref('mes'); // 'hoy' | 'ayer' | 'semana' | 'quincena' | 'mes' | 'todos' | 'custom'
     const customStartDate = ref('');
     const customEndDate = ref('');
+    const filterBranch = ref('TODAS');
     const filterEmployee = ref('TODOS');
     const filterReloj = ref('TODOS');
     const filterArea = ref('TODAS');
     const filterStatus = ref('todos'); // 'todos' | 'validas' | 'rebotes'
     const searchQuery = ref('');
+
+    const effectiveSucursalParam = computed(() => {
+      return filterBranch.value === 'TODAS' ? '0' : String(filterBranch.value);
+    });
+
+    const availableEmployees = computed(() => {
+      if (filterBranch.value === 'TODAS') return props.employees || [];
+      return (props.employees || []).filter(e => Number(e.sucursal_id) === Number(filterBranch.value));
+    });
+
+    const availableDevices = computed(() => {
+      const pool = (props.companyDevices && props.companyDevices.length) ? props.companyDevices : (props.devices || []);
+      if (filterBranch.value === 'TODAS') return pool;
+      return pool.filter(d => Number(d.sucursal_id) === Number(filterBranch.value));
+    });
+
+    const availableAreaOptions = computed(() => {
+      const basePool = (props.companyAreas && props.companyAreas.length) ? props.companyAreas : (props.areas || []);
+      const pool = filterBranch.value === 'TODAS'
+        ? basePool
+        : basePool.filter(a => Number(a.sucursal_id) === Number(filterBranch.value));
+      const seen = new Set();
+      const out = [];
+      for (const a of pool) {
+        if (!a?.nombre || seen.has(a.nombre)) continue;
+        seen.add(a.nombre);
+        out.push(a.nombre);
+      }
+      return out;
+    });
 
     // Estado del dataset cargado desde backend
     const reportData = ref({
@@ -70,7 +104,7 @@ export default {
       smtp_security: 'STARTTLS',
       smtp_user: '',
       smtp_password: '',
-      remitente_nombre: 'ACCESS - Control Biométrico',
+      remitente_nombre: 'notificaciones@access.com',
       remitente_email: '',
       destinatario_default: ''
     });
@@ -83,6 +117,7 @@ export default {
     const isContpaqiModalOpen = ref(false);
     const isExportingContpaqi = ref(false);
     const contpaqiForm = ref({
+      area_nombre: 'TODAS',
       tipo_periodo: 'Quincenal',
       numero_periodo: 1,
       ejercicio: new Date().getFullYear(),
@@ -93,6 +128,7 @@ export default {
 
     function openContpaqiModal() {
       contpaqiForm.value.ejercicio = new Date().getFullYear();
+      contpaqiForm.value.area_nombre = (filterArea.value && filterArea.value !== 'TODAS') ? filterArea.value : 'TODAS';
       isContpaqiModalOpen.value = true;
     }
 
@@ -102,6 +138,7 @@ export default {
         const params = new URLSearchParams({
           start_date: customStartDate.value || '',
           end_date: customEndDate.value || '',
+          area_nombre: contpaqiForm.value.area_nombre || 'TODAS',
           tipo_periodo: contpaqiForm.value.tipo_periodo,
           numero_periodo: String(contpaqiForm.value.numero_periodo || 1),
           ejercicio: String(contpaqiForm.value.ejercicio || new Date().getFullYear()),
@@ -110,7 +147,7 @@ export default {
           concepto_extra: contpaqiForm.value.concepto_extra || 'Horas extras dobles'
         });
         if (props.empresaId) params.set('empresa_id', String(props.empresaId));
-        if (props.sucursalId) params.set('sucursal_id', String(props.sucursalId));
+        params.set('sucursal_id', effectiveSucursalParam.value);
 
         const res = await fetch(`/api/reports/export-contpaqi?${params.toString()}`);
         if (!res.ok) {
@@ -202,7 +239,7 @@ export default {
           status: filterStatus.value
         });
         if (props.empresaId) params.set('empresa_id', props.empresaId);
-        if (props.sucursalId) params.set('sucursal_id', props.sucursalId);
+        params.set('sucursal_id', effectiveSucursalParam.value);
         const res = await fetch(`/api/reports/query?${params.toString()}`);
         if (!res.ok) return;
         const json = await res.json();
@@ -329,7 +366,9 @@ export default {
           area: filterArea.value,
           reloj: filterReloj.value,
           status: filterStatus.value,
-          attach_csv: emailForm.value.attach_csv
+          attach_csv: emailForm.value.attach_csv,
+          empresa_id: props.empresaId,
+          sucursal_id: effectiveSucursalParam.value
         };
 
         const res = await fetch('/api/reports/send-email', {
@@ -431,8 +470,159 @@ export default {
       emit('toast', 'Archivo CSV descargado', 'info');
     }
 
+    // Estado del Modal de Resumen de Retardos e Incidencias por Colaborador
+    const isIncidenciasModalOpen = ref(false);
+    const isLoadingIncidencias = ref(false);
+    const selectedEmpIncidencias = ref(null);
+    const incidenciasFilterTab = ref('incidencias'); // 'incidencias' | 'todos'
+
+    const displayedIncidenciasRows = computed(() => {
+      const emp = selectedEmpIncidencias.value;
+      if (!emp) return [];
+      if (incidenciasFilterTab.value === 'incidencias') {
+        return emp.incidencias_detalle || [];
+      }
+      return emp.dias_detalle || [];
+    });
+
+    function buildIncidenciasFallbackFromBitacora(records) {
+      const byDay = new Map();
+      for (const rec of records || []) {
+        if (rec.es_rebote) continue;
+        const dtStr = String(rec.fecha_hora_display || rec.fecha_hora_evento || '').replace('T', ' ').slice(0, 19);
+        const dayKey = dtStr.slice(0, 10);
+        if (!dayKey) continue;
+        if (!byDay.has(dayKey)) byDay.set(dayKey, []);
+        byDay.get(dayKey).push({ ...rec, _dtStr: dtStr });
+      }
+
+      let minutosRetardoTotal = 0;
+      const diasDetalle = [];
+
+      for (const [dayKey, dayRecs] of byDay.entries()) {
+        dayRecs.sort((a, b) => a._dtStr.localeCompare(b._dtStr));
+        const firstRec = dayRecs[0];
+        const lastRec = dayRecs[dayRecs.length - 1];
+        const entrada = firstRec._dtStr.length >= 19 ? firstRec._dtStr.slice(11, 19) : firstRec._dtStr;
+        const isIncompleto = dayRecs.length === 1;
+        const salida = isIncompleto
+          ? 'Sin salida'
+          : (lastRec._dtStr.length >= 19 ? lastRec._dtStr.slice(11, 19) : lastRec._dtStr);
+
+        let horas = 0;
+        if (!isIncompleto) {
+          const dt1 = new Date(firstRec._dtStr.replace(' ', 'T'));
+          const dt2 = new Date(lastRec._dtStr.replace(' ', 'T'));
+          const diffMs = dt2.getTime() - dt1.getTime();
+          if (!Number.isNaN(diffMs) && diffMs > 0) {
+            horas = Math.round((diffMs / 3600000) * 10) / 10;
+          }
+        }
+
+        const estatusEntrada = firstRec.estatus_prenomina || 'PUNTUAL';
+        const esRetardo = estatusEntrada.startsWith('RETARDO');
+        let minutosRetardo = 0;
+        if (esRetardo) {
+          const matchMin = estatusEntrada.match(/\+(\d+)\s*min/i);
+          minutosRetardo = matchMin ? parseInt(matchMin[1], 10) : 0;
+          minutosRetardoTotal += minutosRetardo;
+        }
+
+        const esManual = dayRecs.some(r => Boolean(r.es_manual));
+        const notasDia = [...new Set(dayRecs.map(r => (r.nota_incidencia || '').trim()).filter(Boolean))].join(' • ');
+
+        const tiposIncidencia = [];
+        if (esRetardo) tiposIncidencia.push(estatusEntrada);
+        if (isIncompleto) tiposIncidencia.push('DÍA INCOMPLETO (Sin salida)');
+        if (esManual) tiposIncidencia.push('JUSTIFICADO / MANUAL');
+        const tieneIncidencia = tiposIncidencia.length > 0 || Boolean(notasDia);
+
+        diasDetalle.push({
+          fecha: dayKey,
+          entrada,
+          salida,
+          horas,
+          total_checadas: dayRecs.length,
+          estatus_entrada: estatusEntrada,
+          es_retardo: esRetardo,
+          minutos_retardo: minutosRetardo,
+          es_incompleto: isIncompleto,
+          es_manual: esManual,
+          tiene_incidencia: tieneIncidencia,
+          tipos_incidencia: tiposIncidencia,
+          nota_incidencia: notasDia,
+          metodo: firstRec.metodo || 'BIOMETRÍA',
+          reloj: firstRec.reloj_nombre || 'Terminal'
+        });
+      }
+
+      diasDetalle.sort((a, b) => b.fecha.localeCompare(a.fecha));
+      return {
+        diasDetalle,
+        incidenciasDetalle: diasDetalle.filter(d => d.tiene_incidencia),
+        minutosRetardoTotal
+      };
+    }
+
+    async function openIncidenciasModal(row) {
+      const areaPool = (props.companyAreas && props.companyAreas.length) ? props.companyAreas : (props.areas || []);
+      const areaCfg = areaPool.find(a => a.nombre === row.area_nombre && (!row.sucursal_id || Number(a.sucursal_id) === Number(row.sucursal_id)))
+        || areaPool.find(a => a.nombre === row.area_nombre);
+      const baseRow = {
+        ...row,
+        tolerancia_min: row.tolerancia_min ?? areaCfg?.tolerancia_min ?? 10,
+        horario_esperado: row.horario_esperado || areaCfg?.horario_resumen || areaCfg?.horario || row.turno || 'No definido',
+        horario_detalle: row.horario_detalle || areaCfg?.horario_detalle || ''
+      };
+
+      selectedEmpIncidencias.value = baseRow;
+      incidenciasFilterTab.value = (baseRow.incidencias_detalle && baseRow.incidencias_detalle.length > 0)
+        ? 'incidencias'
+        : 'todos';
+      isIncidenciasModalOpen.value = true;
+
+      if (!Array.isArray(row.dias_detalle) && (row.dias_asistidos > 0 || row.total_validas > 0)) {
+        isLoadingIncidencias.value = true;
+        try {
+          const params = new URLSearchParams({
+            type: 'bitacora',
+            start_date: customStartDate.value || '',
+            end_date: customEndDate.value || '',
+            employee_id: String(row.codigo_empleado),
+            reloj: filterReloj.value || 'TODOS',
+            status: 'validas'
+          });
+          if (props.empresaId) params.set('empresa_id', String(props.empresaId));
+          params.set('sucursal_id', '0');
+
+          const res = await fetch(`/api/reports/query?${params.toString()}`);
+          if (res.ok) {
+            const json = await res.json();
+            const records = json.report?.data || [];
+            const built = buildIncidenciasFallbackFromBitacora(records);
+            if (selectedEmpIncidencias.value?.codigo_empleado === row.codigo_empleado) {
+              selectedEmpIncidencias.value = {
+                ...baseRow,
+                minutos_retardo_total: baseRow.minutos_retardo_total ?? built.minutosRetardoTotal,
+                incidencias_detalle: built.incidenciasDetalle,
+                dias_detalle: built.diasDetalle
+              };
+              incidenciasFilterTab.value = built.incidenciasDetalle.length > 0 ? 'incidencias' : 'todos';
+            }
+          }
+        } catch (e) {
+          console.error('Error loading incidencias detail:', e);
+        } finally {
+          isLoadingIncidencias.value = false;
+        }
+      } else {
+        isLoadingIncidencias.value = false;
+      }
+    }
+
     // Resetear filtros
     function resetFilters() {
+      filterBranch.value = 'TODAS';
       filterEmployee.value = 'TODOS';
       filterReloj.value = 'TODOS';
       filterArea.value = 'TODAS';
@@ -441,7 +631,7 @@ export default {
       updateDatePreset('mes');
     }
 
-    watch([activeReportType, filterEmployee, filterReloj, filterArea, filterStatus, () => props.empresaId, () => props.sucursalId], () => {
+    watch([activeReportType, filterBranch, filterEmployee, filterReloj, filterArea, filterStatus, () => props.empresaId, () => props.sucursalId], () => {
       fetchReport();
     });
 
@@ -456,10 +646,14 @@ export default {
       datePreset,
       customStartDate,
       customEndDate,
+      filterBranch,
       filterEmployee,
       filterReloj,
       filterArea,
       filterStatus,
+      availableEmployees,
+      availableDevices,
+      availableAreaOptions,
       searchQuery,
       reportData,
       filteredRows,
@@ -487,7 +681,13 @@ export default {
       isExportingContpaqi,
       contpaqiForm,
       openContpaqiModal,
-      downloadContpaqiTxt
+      downloadContpaqiTxt,
+      isIncidenciasModalOpen,
+      isLoadingIncidencias,
+      selectedEmpIncidencias,
+      incidenciasFilterTab,
+      displayedIncidenciasRows,
+      openIncidenciasModal
     };
   },
   template: `
@@ -557,7 +757,7 @@ export default {
         </div>
 
         <!-- Fila Inferior: Selectores de Rango y Catálogos -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 pt-1 text-xs">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 pt-1 text-xs">
           
           <!-- Rango Desde -->
           <div>
@@ -581,6 +781,19 @@ export default {
             />
           </div>
 
+          <!-- Filtro Sucursal Base / Ámbito -->
+          <div>
+            <label class="block font-bold text-charcoal-600 mb-1">Sucursal</label>
+            <select
+              v-model="filterBranch"
+              class="w-full h-9 px-2.5 rounded-xl border border-charcoal-200 bg-white text-xs font-medium focus:ring-2 focus:ring-black focus:outline-none truncate">
+              <option value="TODAS">Todas (Cruce Empresa)</option>
+              <option v-for="b in branches" :key="b.id" :value="String(b.id)">
+                {{ b.nombre }}
+              </option>
+            </select>
+          </div>
+
           <!-- Filtro Colaborador -->
           <div>
             <label class="block font-bold text-charcoal-600 mb-1">Colaborador</label>
@@ -588,7 +801,7 @@ export default {
               v-model="filterEmployee"
               class="w-full h-9 px-2.5 rounded-xl border border-charcoal-200 bg-white text-xs font-medium focus:ring-2 focus:ring-black focus:outline-none truncate">
               <option value="TODOS">Todos los Empleados</option>
-              <option v-for="emp in employees" :key="emp.codigo_empleado" :value="emp.codigo_empleado">
+              <option v-for="emp in availableEmployees" :key="emp.codigo_empleado" :value="emp.codigo_empleado">
                 #{{ emp.codigo_empleado }} - {{ emp.nombre }}
               </option>
             </select>
@@ -601,8 +814,8 @@ export default {
               v-model="filterReloj"
               class="w-full h-9 px-2.5 rounded-xl border border-charcoal-200 bg-white text-xs font-medium focus:ring-2 focus:ring-black focus:outline-none truncate">
               <option value="TODOS">Todos los Relojes</option>
-              <option v-for="dev in devices" :key="dev.id" :value="dev.nombre">
-                {{ dev.nombre }} ({{ dev.ip }})
+              <option v-for="dev in availableDevices" :key="dev.id" :value="dev.nombre">
+                {{ dev.nombre }} ({{ dev.sucursal_nombre || dev.ip }})
               </option>
             </select>
           </div>
@@ -614,8 +827,8 @@ export default {
               v-model="filterArea"
               class="w-full h-9 px-2.5 rounded-xl border border-charcoal-200 bg-white text-xs font-medium focus:ring-2 focus:ring-black focus:outline-none truncate">
               <option value="TODAS">Todas las Áreas</option>
-              <option v-for="a in areas" :key="a.id" :value="a.nombre">
-                {{ a.nombre }}
+              <option v-for="aName in availableAreaOptions" :key="aName" :value="aName">
+                {{ aName }}
               </option>
             </select>
           </div>
@@ -704,7 +917,12 @@ export default {
                 </td>
                 <td class="py-3.5 px-4">
                   <div class="font-medium text-charcoal-800">{{ row.area_nombre }}</div>
-                  <div class="text-[10px] text-charcoal-400">{{ row.turno }}</div>
+                  <div class="flex items-center gap-1.5 flex-wrap mt-0.5">
+                    <span v-if="row.sucursal_base_nombre" class="px-1.5 py-0.5 rounded bg-charcoal-100 text-charcoal-700 text-[9px] font-bold uppercase tracking-wider">Base: {{ row.sucursal_base_nombre }}</span>
+                    <span v-if="row.horario_origen === 'PERSONALIZADO'" class="px-1.5 py-0.5 rounded bg-[#18181B] text-white text-[9px] font-bold uppercase tracking-wider">Personalizado</span>
+                    <span v-else-if="row.es_horario_mixto" class="px-1.5 py-0.5 rounded bg-charcoal-100 text-charcoal-700 text-[9px] font-bold uppercase tracking-wider">Mixto</span>
+                    <span class="text-[10px] text-charcoal-400 mono-code">{{ row.horario_esperado || row.turno }}</span>
+                  </div>
                 </td>
                 <td class="py-3.5 px-3 text-center mono-code font-bold text-charcoal-900 bg-charcoal-50/50">
                   {{ row.dias_asistidos ?? row.dias_activos ?? 0 }}
@@ -725,18 +943,28 @@ export default {
                   {{ row.total_rebotes || 0 }}
                 </td>
                 <td class="py-3.5 px-5 text-right">
-                  <span v-if="row.total_validas > 0" class="text-[11px] font-semibold"
-                    :class="{
-                      'text-charcoal-900': row.estatus === 'ASISTENCIA PUNTUAL',
-                      'text-rose-600': row.estatus && row.estatus.includes('RETARDO'),
-                      'text-charcoal-600': row.estatus && row.estatus.includes('INCOMPLETO') && !row.estatus.includes('RETARDO'),
-                      'text-charcoal-400': !row.estatus || row.estatus === 'SIN REGISTROS'
-                    }">
-                    {{ row.estatus }}
-                  </span>
-                  <span v-else class="text-[11px] font-semibold text-charcoal-400">
-                    SIN REGISTROS
-                  </span>
+                  <div class="inline-flex items-center justify-end gap-2.5">
+                    <span v-if="row.total_validas > 0" class="text-[11px] font-semibold"
+                      :class="{
+                        'text-charcoal-900': row.estatus === 'ASISTENCIA PUNTUAL',
+                        'text-rose-600': row.estatus && row.estatus.includes('RETARDO'),
+                        'text-charcoal-600': row.estatus && row.estatus.includes('INCOMPLETO') && !row.estatus.includes('RETARDO'),
+                        'text-charcoal-400': !row.estatus || row.estatus === 'SIN REGISTROS'
+                      }">
+                      {{ row.estatus }}
+                    </span>
+                    <span v-else class="text-[11px] font-semibold text-charcoal-400">
+                      SIN REGISTROS
+                    </span>
+                    <button
+                      type="button"
+                      @click="openIncidenciasModal(row)"
+                      title="Ver resumen de retardos e incidencias"
+                      aria-label="Ver resumen de retardos e incidencias"
+                      class="w-7 h-7 rounded-xl inline-flex items-center justify-center border border-charcoal-200 bg-white text-charcoal-500 hover:bg-[#18181B] hover:text-white hover:border-[#18181B] transition-all cursor-pointer shrink-0 shadow-2xs">
+                      <i class="ph ph-eye text-sm"></i>
+                    </button>
+                  </div>
                 </td>
               </tr>
               <tr v-if="!filteredRows.length">
@@ -768,7 +996,10 @@ export default {
                   <div class="text-[10px] text-charcoal-400 mono-code">Código #{{ row.codigo_empleado }}</div>
                 </td>
                 <td class="py-3.5 px-4 font-medium text-charcoal-800">{{ row.area }}</td>
-                <td class="py-3.5 px-4 text-charcoal-700 font-medium">{{ row.reloj_nombre }}</td>
+                <td class="py-3.5 px-4 text-charcoal-700 font-medium">
+                  <div>{{ row.reloj_nombre }}</div>
+                  <div v-if="row.sucursal_nombre" class="text-[10px] text-charcoal-400">Suc. {{ row.sucursal_nombre }}</div>
+                </td>
                 <td class="py-3.5 px-4">
                   <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold text-charcoal-700">
                     <i :class="[\'ph text-charcoal-400\', row.metodo === 'ROSTRO' ? 'ph-scan' : (row.metodo === 'HUELLA' ? 'ph-fingerprint' : 'ph-key')]"></i>
@@ -901,98 +1132,105 @@ export default {
 
       </div>
 
-      <!-- MODAL: ENVIAR REPORTE POR CORREO -->
+      <!-- MODAL: ENVIAR REPORTE POR CORREO (DISTRIBUCIÓN HORIZONTAL 2 COLUMNAS) -->
       <ModalBase
         v-if="isEmailModalOpen"
         title="Enviar Reporte por Correo Electrónico"
-        size="md"
+        size="xl"
         confirmLabel="Enviar Reporte"
         :confirmDisabled="emailSending"
         @close="isEmailModalOpen = false"
         @confirm="sendReportEmail">
 
-        <div class="space-y-4 text-xs">
-          
-          <!-- Resumen del Reporte -->
-          <div class="p-3.5 rounded-2xl bg-charcoal-50 border border-charcoal-200 space-y-1.5">
-            <div class="font-bold text-charcoal-900 flex items-center justify-between">
-              <span>{{ reportData.title }}</span>
-              <span class="mono-code text-[11px] text-charcoal-600 font-bold">
-                {{ filteredRows.length }} registros
-              </span>
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch text-xs">
+
+          <!-- Columna Izquierda (5 cols): Resumen del Reporte, Estado SMTP y Adjunto -->
+          <div class="md:col-span-5 flex flex-col justify-between space-y-3.5">
+            <div class="space-y-3.5">
+              <!-- Resumen del Reporte -->
+              <div class="p-4 rounded-2xl bg-charcoal-50 border border-charcoal-200 space-y-1.5">
+                <div class="font-bold text-charcoal-900 flex items-center justify-between gap-2">
+                  <span>{{ reportData.title }}</span>
+                  <span class="mono-code text-[11px] text-charcoal-600 font-bold shrink-0">
+                    {{ filteredRows.length }} registros
+                  </span>
+                </div>
+                <div class="text-[11px] text-charcoal-500">
+                  Periodo: <b class="text-charcoal-800">{{ customStartDate && customEndDate ? (customStartDate + ' al ' + customEndDate) : 'Histórico completo' }}</b>
+                </div>
+              </div>
+
+              <!-- Alerta Estado Remitente SMTP -->
+              <div v-if="!emailConfig.is_configured" class="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                  <i class="ph ph-warning-circle text-base text-amber-600 shrink-0"></i>
+                  <span>El servidor SMTP aún no está configurado.</span>
+                </div>
+                <button
+                  type="button"
+                  @click="isEmailModalOpen = false; isConfigModalOpen = true"
+                  class="font-bold underline text-amber-900 hover:text-black cursor-pointer shrink-0">
+                  Configurar ahora
+                </button>
+              </div>
+              <div v-else class="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200 text-emerald-800 text-[11px] flex items-center gap-2">
+                <i class="ph ph-check-circle text-base text-emerald-600 shrink-0"></i>
+                <span class="truncate">Se enviará desde: <b class="font-mono text-emerald-900">{{ emailConfig.smtp_user }}</b></span>
+              </div>
             </div>
-            <div class="text-[11px] text-charcoal-500">
-              Periodo: <b class="text-charcoal-800">{{ customStartDate && customEndDate ? (customStartDate + ' al ' + customEndDate) : 'Histórico completo' }}</b>
+
+            <!-- Adjuntar CSV -->
+            <label class="flex items-center gap-2.5 p-3.5 rounded-2xl border border-charcoal-200 bg-white hover:bg-charcoal-50 cursor-pointer">
+              <input
+                type="checkbox"
+                v-model="emailForm.attach_csv"
+                class="w-4 h-4 rounded text-black focus:ring-black shrink-0"
+              />
+              <div>
+                <div class="font-bold text-charcoal-900">Adjuntar archivo CSV completo</div>
+                <div class="text-[11px] text-charcoal-500">Permite abrir y procesar la información en Excel.</div>
+              </div>
+            </label>
+          </div>
+
+          <!-- Columna Derecha (7 cols): Destinatario, Asunto y Notas -->
+          <div class="md:col-span-7 space-y-3.5">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block font-bold text-charcoal-800 mb-1">Correo Electrónico Destinatario *</label>
+                <input
+                  type="email"
+                  v-model="emailForm.to_email"
+                  placeholder="ejemplo@empresa.com"
+                  class="w-full h-10 px-3.5 rounded-xl border border-charcoal-200 bg-white text-xs font-mono focus:ring-2 focus:ring-black focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label class="block font-bold text-charcoal-800 mb-1">Asunto del Correo</label>
+                <input
+                  type="text"
+                  v-model="emailForm.subject"
+                  class="w-full h-10 px-3.5 rounded-xl border border-charcoal-200 bg-white text-xs focus:ring-2 focus:ring-black focus:outline-none"
+                />
+              </div>
             </div>
-          </div>
 
-          <!-- Alerta Estado Remitente SMTP -->
-          <div v-if="!emailConfig.is_configured" class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <i class="ph ph-warning-circle text-base text-amber-600 shrink-0"></i>
-              <span>El servidor SMTP aún no está configurado.</span>
-            </div>
-            <button
-              type="button"
-              @click="isEmailModalOpen = false; isConfigModalOpen = true"
-              class="font-bold underline text-amber-900 hover:text-black cursor-pointer">
-              Configurar ahora
-            </button>
-          </div>
-          <div v-else class="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200 text-emerald-800 text-[11px] flex items-center gap-2">
-            <i class="ph ph-check-circle text-base text-emerald-600 shrink-0"></i>
-            <span>Se enviará desde: <b class="font-mono text-emerald-900">{{ emailConfig.smtp_user }}</b></span>
-          </div>
-
-          <!-- Correo Destinatario -->
-          <div>
-            <label class="block font-bold text-charcoal-800 mb-1">Correo Electrónico Destinatario *</label>
-            <input
-              type="email"
-              v-model="emailForm.to_email"
-              placeholder="ejemplo@empresa.com"
-              class="w-full h-10 px-3.5 rounded-xl border border-charcoal-200 bg-white text-xs font-mono focus:ring-2 focus:ring-black focus:outline-none"
-            />
-          </div>
-
-          <!-- Asunto -->
-          <div>
-            <label class="block font-bold text-charcoal-800 mb-1">Asunto del Correo</label>
-            <input
-              type="text"
-              v-model="emailForm.subject"
-              class="w-full h-10 px-3.5 rounded-xl border border-charcoal-200 bg-white text-xs focus:ring-2 focus:ring-black focus:outline-none"
-            />
-          </div>
-
-          <!-- Notas opcionales -->
-          <div>
-            <label class="block font-bold text-charcoal-800 mb-1">Comentarios o Notas Adicionales (Opcional)</label>
-            <textarea
-              v-model="emailForm.notes"
-              rows="3"
-              placeholder="Escribe algún mensaje o indicación que se incluirá en el cuerpo del correo..."
-              class="w-full p-3 rounded-xl border border-charcoal-200 bg-white text-xs focus:ring-2 focus:ring-black focus:outline-none resize-none"
-            ></textarea>
-          </div>
-
-          <!-- Adjuntar CSV -->
-          <label class="flex items-center gap-2.5 p-3 rounded-xl border border-charcoal-200 bg-white hover:bg-charcoal-50 cursor-pointer">
-            <input
-              type="checkbox"
-              v-model="emailForm.attach_csv"
-              class="w-4 h-4 rounded text-black focus:ring-black"
-            />
             <div>
-              <div class="font-bold text-charcoal-900">Adjuntar archivo CSV de bitácora completa</div>
-              <div class="text-[11px] text-charcoal-500">Permite abrir y procesar la información directamente en Microsoft Excel.</div>
+              <label class="block font-bold text-charcoal-800 mb-1">Comentarios o Notas Adicionales (Opcional)</label>
+              <textarea
+                v-model="emailForm.notes"
+                rows="4"
+                placeholder="Escribe algún mensaje o indicación que se incluirá en el cuerpo del correo..."
+                class="w-full p-3 rounded-xl border border-charcoal-200 bg-white text-xs focus:ring-2 focus:ring-black focus:outline-none resize-none"
+              ></textarea>
             </div>
-          </label>
 
-          <!-- Spinner al enviar -->
-          <div v-if="emailSending" class="p-3 rounded-xl bg-charcoal-100 text-charcoal-800 flex items-center justify-center gap-2 font-bold">
-            <i class="ph ph-spinner animate-spin text-base"></i>
-            <span>Conectando con SMTP y enviando correo...</span>
+            <!-- Spinner al enviar -->
+            <div v-if="emailSending" class="p-3 rounded-xl bg-charcoal-100 text-charcoal-800 flex items-center justify-center gap-2 font-bold">
+              <i class="ph ph-spinner animate-spin text-base"></i>
+              <span>Conectando con SMTP y enviando correo...</span>
+            </div>
           </div>
 
         </div>
@@ -1002,7 +1240,7 @@ export default {
       <ModalBase
         v-if="isConfigModalOpen"
         title="Configuración de Servidor de Correo (SMTP)"
-        size="md"
+        size="xl"
         confirmLabel="Listo"
         @close="isConfigModalOpen = false"
         @confirm="isConfigModalOpen = false">
@@ -1092,7 +1330,7 @@ export default {
               <input
                 type="text"
                 v-model="smtpForm.remitente_nombre"
-                placeholder="ACCESS - Control Biométrico"
+                placeholder="notificaciones@access.com"
                 class="w-full h-9 px-3 rounded-xl border border-charcoal-200 bg-white text-xs focus:ring-2 focus:ring-black focus:outline-none"
               />
             </div>
@@ -1135,13 +1373,13 @@ export default {
         </div>
       </ModalBase>
 
-      <!-- MODAL: EXPORTAR LAYOUT CONTPAQi NÓMINAS (.TXT) -->
+      <!-- MODAL: EXPORTAR LAYOUT CONTPAQi NÓMINAS (.TXT) (DISTRIBUCIÓN HORIZONTAL AMPLIA) -->
       <ModalBase
         v-if="isContpaqiModalOpen"
         title="Exportar Incidencias para CONTPAQi Nóminas (.txt)"
         :confirmLabel="isExportingContpaqi ? 'Generando...' : 'Descargar Layout (.txt)'"
         :confirmDisabled="isExportingContpaqi"
-        size="md"
+        size="xl"
         @close="isContpaqiModalOpen = false"
         @confirm="downloadContpaqiTxt">
         <div class="space-y-4 text-xs">
@@ -1151,10 +1389,17 @@ export default {
             según los días laborales y tolerancias de cada área.
           </div>
 
-          <div class="grid grid-cols-3 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div>
+              <label class="block font-bold text-charcoal-800 mb-1">Área / Departamento</label>
+              <select v-model="contpaqiForm.area_nombre" class="w-full h-10 px-3 rounded-xl border border-charcoal-200 bg-white font-semibold">
+                <option value="TODAS">Todas las áreas</option>
+                <option v-for="aName in availableAreaOptions" :key="aName" :value="aName">{{ aName }}</option>
+              </select>
+            </div>
             <div>
               <label class="block font-bold text-charcoal-800 mb-1">Tipo de Periodo</label>
-              <select v-model="contpaqiForm.tipo_periodo" class="w-full px-3 py-2.5 rounded-xl border border-charcoal-200 bg-white font-semibold">
+              <select v-model="contpaqiForm.tipo_periodo" class="w-full h-10 px-3 rounded-xl border border-charcoal-200 bg-white font-semibold">
                 <option value="Semanal">Semanal</option>
                 <option value="Quincenal">Quincenal</option>
                 <option value="Catorcenal">Catorcenal</option>
@@ -1163,12 +1408,12 @@ export default {
             <div>
               <label class="block font-bold text-charcoal-800 mb-1">Número de Periodo</label>
               <input v-model.number="contpaqiForm.numero_periodo" type="number" min="1" max="53"
-                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 mono-code font-bold">
+                class="w-full h-10 px-3.5 rounded-xl border border-charcoal-200 mono-code font-bold">
             </div>
             <div>
               <label class="block font-bold text-charcoal-800 mb-1">Ejercicio</label>
               <input v-model.number="contpaqiForm.ejercicio" type="number" min="2020" max="2099"
-                class="w-full px-3.5 py-2.5 rounded-xl border border-charcoal-200 mono-code font-bold">
+                class="w-full h-10 px-3.5 rounded-xl border border-charcoal-200 mono-code font-bold">
             </div>
           </div>
 
@@ -1176,22 +1421,284 @@ export default {
             <span class="text-[11px] font-bold uppercase tracking-wider text-charcoal-400 block">
               Nombres Exactos de Conceptos en CONTPAQi
             </span>
-            <div>
-              <label class="block font-bold text-charcoal-800 mb-1">Concepto para Faltas</label>
-              <input v-model="contpaqiForm.concepto_falta" type="text" maxlength="33"
-                class="w-full px-3.5 py-2 rounded-xl border border-charcoal-200">
-            </div>
-            <div>
-              <label class="block font-bold text-charcoal-800 mb-1">Concepto para Retardos</label>
-              <input v-model="contpaqiForm.concepto_retardo" type="text" maxlength="33"
-                class="w-full px-3.5 py-2 rounded-xl border border-charcoal-200">
-            </div>
-            <div>
-              <label class="block font-bold text-charcoal-800 mb-1">Concepto para Horas Extra</label>
-              <input v-model="contpaqiForm.concepto_extra" type="text" maxlength="33"
-                class="w-full px-3.5 py-2 rounded-xl border border-charcoal-200">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label class="block font-bold text-charcoal-800 mb-1">Concepto para Faltas</label>
+                <input v-model="contpaqiForm.concepto_falta" type="text" maxlength="33"
+                  class="w-full h-10 px-3.5 rounded-xl border border-charcoal-200">
+              </div>
+              <div>
+                <label class="block font-bold text-charcoal-800 mb-1">Concepto para Retardos</label>
+                <input v-model="contpaqiForm.concepto_retardo" type="text" maxlength="33"
+                  class="w-full h-10 px-3.5 rounded-xl border border-charcoal-200">
+              </div>
+              <div>
+                <label class="block font-bold text-charcoal-800 mb-1">Concepto para Horas Extra</label>
+                <input v-model="contpaqiForm.concepto_extra" type="text" maxlength="33"
+                  class="w-full h-10 px-3.5 rounded-xl border border-charcoal-200">
+              </div>
             </div>
           </div>
+        </div>
+      </ModalBase>
+
+      <!-- MODAL: RESUMEN DE RETARDOS E INCIDENCIAS DE PRE-NÓMINA -->
+      <ModalBase
+        v-if="isIncidenciasModalOpen && selectedEmpIncidencias"
+        title="Resumen de Retardos e Incidencias"
+        :subtitle="'Detalle individual de asistencia y puntualidad — Periodo ' + (customStartDate && customEndDate ? (customStartDate + ' al ' + customEndDate) : 'Histórico completo')"
+        size="wide"
+        :hideConfirm="true"
+        cancelLabel="Cerrar"
+        @close="isIncidenciasModalOpen = false">
+
+        <div class="space-y-4 text-xs">
+
+          <!-- Ficha del colaborador -->
+          <div class="p-4 rounded-2xl bg-charcoal-50/70 border border-charcoal-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="flex items-start sm:items-center gap-3 min-w-0">
+              <div class="w-9 h-9 rounded-full bg-[#18181B] text-white flex items-center justify-center text-xs font-bold shrink-0">
+                {{ (selectedEmpIncidencias.nombre || 'E').slice(0, 2).toUpperCase() }}
+              </div>
+              <div class="min-w-0 space-y-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="font-bold text-sm text-charcoal-900 truncate">{{ selectedEmpIncidencias.nombre }}</span>
+                  <span class="mono-code text-[11px] font-bold text-charcoal-500">#{{ selectedEmpIncidencias.codigo_empleado }}</span>
+                  <span v-if="selectedEmpIncidencias.puesto" class="text-[11px] text-charcoal-400">• {{ selectedEmpIncidencias.puesto }}</span>
+                </div>
+                <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-charcoal-500">
+                  <span v-if="selectedEmpIncidencias.sucursal_base_nombre" class="inline-flex items-center gap-1">
+                    <i class="ph ph-map-pin text-charcoal-400"></i>
+                    <span>Base: {{ selectedEmpIncidencias.sucursal_base_nombre }}</span>
+                  </span>
+                  <span class="inline-flex items-center gap-1">
+                    <i class="ph ph-buildings text-charcoal-400"></i>
+                    <span>{{ selectedEmpIncidencias.area_nombre || 'General' }}</span>
+                  </span>
+                  <span class="inline-flex items-center gap-1">
+                    <i class="ph ph-clock text-charcoal-400"></i>
+                    <span class="mono-code">{{ selectedEmpIncidencias.horario_esperado || selectedEmpIncidencias.turno || 'No definido' }}</span>
+                  </span>
+                  <span class="inline-flex items-center gap-1">
+                    <i class="ph ph-timer text-charcoal-400"></i>
+                    <span>{{ selectedEmpIncidencias.tolerancia_min ?? 10 }} min tolerancia</span>
+                  </span>
+                  <span class="inline-flex items-center gap-1">
+                    <i class="ph ph-calendar-blank text-charcoal-400"></i>
+                    <span class="mono-code">{{ customStartDate && customEndDate ? (customStartDate + ' al ' + customEndDate) : 'Histórico completo' }}</span>
+                  </span>
+                </div>
+                <div v-if="selectedEmpIncidencias.horario_detalle && selectedEmpIncidencias.horario_detalle !== selectedEmpIncidencias.horario_esperado" class="text-[10px] mono-code text-charcoal-500 pt-0.5">
+                  {{ selectedEmpIncidencias.horario_detalle }}
+                </div>
+              </div>
+            </div>
+            <span
+              class="px-3 py-1.5 rounded-xl bg-white border border-charcoal-200 text-[11px] font-bold shrink-0 self-start sm:self-center shadow-2xs"
+              :class="{
+                'text-charcoal-900': selectedEmpIncidencias.estatus === 'ASISTENCIA PUNTUAL',
+                'text-rose-600': selectedEmpIncidencias.estatus && selectedEmpIncidencias.estatus.includes('RETARDO'),
+                'text-charcoal-600': selectedEmpIncidencias.estatus && selectedEmpIncidencias.estatus.includes('INCOMPLETO') && !selectedEmpIncidencias.estatus.includes('RETARDO'),
+                'text-charcoal-400': !selectedEmpIncidencias.estatus || selectedEmpIncidencias.estatus === 'SIN REGISTROS'
+              }">
+              {{ selectedEmpIncidencias.estatus || 'SIN REGISTROS' }}
+            </span>
+          </div>
+
+          <!-- 4 KPIs ejecutivos -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div class="bg-white rounded-2xl p-4 border border-charcoal-200 shadow-2xs flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div
+                  class="text-2xl font-black mono-code leading-none"
+                  :class="(selectedEmpIncidencias.retardos > 0) ? 'text-rose-600' : 'text-charcoal-900'">
+                  {{ selectedEmpIncidencias.retardos || 0 }}
+                </div>
+                <div class="text-xs font-bold text-charcoal-900 mt-1.5">Retardos</div>
+                <div class="text-[11px] text-charcoal-400 mono-code">{{ selectedEmpIncidencias.minutos_retardo_total || 0 }} min acumulados</div>
+              </div>
+              <i class="ph ph-clock-countdown text-xl text-charcoal-300 shrink-0"></i>
+            </div>
+
+            <div class="bg-white rounded-2xl p-4 border border-charcoal-200 shadow-2xs flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="text-2xl font-black text-charcoal-900 mono-code leading-none">
+                  {{ selectedEmpIncidencias.dias_incompletos || 0 }}
+                </div>
+                <div class="text-xs font-bold text-charcoal-900 mt-1.5">Incompletos</div>
+                <div class="text-[11px] text-charcoal-400">días sin salida</div>
+              </div>
+              <i class="ph ph-warning-circle text-xl text-charcoal-300 shrink-0"></i>
+            </div>
+
+            <div class="bg-white rounded-2xl p-4 border border-charcoal-200 shadow-2xs flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="text-2xl font-black text-charcoal-900 mono-code leading-none">
+                  {{ selectedEmpIncidencias.dias_asistidos || 0 }}
+                </div>
+                <div class="text-xs font-bold text-charcoal-900 mt-1.5">Días Asistidos</div>
+                <div class="text-[11px] text-charcoal-400 mono-code">{{ selectedEmpIncidencias.horas_trabajadas || 0 }}h trabajadas</div>
+              </div>
+              <i class="ph ph-calendar-check text-xl text-charcoal-300 shrink-0"></i>
+            </div>
+
+            <div class="bg-white rounded-2xl p-4 border border-charcoal-200 shadow-2xs flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <div class="text-2xl font-black text-charcoal-900 mono-code leading-none">
+                  {{ selectedEmpIncidencias.total_validas || 0 }}
+                </div>
+                <div class="text-xs font-bold text-charcoal-900 mt-1.5">Marcajes</div>
+                <div class="text-[11px] text-charcoal-400 mono-code">{{ selectedEmpIncidencias.total_rebotes || 0 }} rebotes</div>
+              </div>
+              <i class="ph ph-fingerprint text-xl text-charcoal-300 shrink-0"></i>
+            </div>
+          </div>
+
+          <!-- Contenedor de tabla estilo módulo Reportes -->
+          <div class="bg-white rounded-2xl border border-charcoal-200 shadow-2xs overflow-hidden flex flex-col">
+            <div class="px-4 py-3 border-b border-charcoal-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-charcoal-50/50">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <i class="ph ph-list-dashes text-base text-charcoal-400 shrink-0"></i>
+                <div class="min-w-0">
+                  <h4 class="text-xs font-semibold text-charcoal-900">Desglose por Día</h4>
+                  <p class="text-[11px] text-charcoal-400">{{ displayedIncidenciasRows.length }} registros mostrados</p>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  @click="incidenciasFilterTab = 'incidencias'"
+                  class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  :class="incidenciasFilterTab === 'incidencias' ? 'bg-[#18181B] text-white' : 'bg-white hover:bg-charcoal-100 text-charcoal-700 border border-charcoal-200'">
+                  Solo Incidencias ({{ (selectedEmpIncidencias.incidencias_detalle || []).length }})
+                </button>
+                <button
+                  type="button"
+                  @click="incidenciasFilterTab = 'todos'"
+                  class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  :class="incidenciasFilterTab === 'todos' ? 'bg-[#18181B] text-white' : 'bg-white hover:bg-charcoal-100 text-charcoal-700 border border-charcoal-200'">
+                  Todos los Días ({{ (selectedEmpIncidencias.dias_detalle || []).length }})
+                </button>
+              </div>
+            </div>
+
+            <div v-if="isLoadingIncidencias" class="py-10 px-6 text-center space-y-2 bg-white">
+              <i class="ph ph-spinner animate-spin text-2xl text-charcoal-400"></i>
+              <p class="font-semibold text-charcoal-700 text-xs">Cargando detalle de retardos e incidencias...</p>
+            </div>
+
+            <div v-else-if="!displayedIncidenciasRows.length" class="py-10 px-6 text-center space-y-1.5 bg-white">
+              <i
+                class="ph text-3xl text-charcoal-300"
+                :class="incidenciasFilterTab === 'incidencias' ? 'ph-check-circle' : 'ph-calendar-x'"></i>
+              <p class="font-bold text-charcoal-800 text-xs">
+                {{ incidenciasFilterTab === 'incidencias'
+                  ? 'Sin retardos ni incidencias en el periodo seleccionado'
+                  : 'Sin días asistidos registrados en el periodo seleccionado' }}
+              </p>
+              <p class="text-[11px] text-charcoal-400">
+                {{ incidenciasFilterTab === 'incidencias'
+                  ? 'El colaborador no presenta retardos, días incompletos ni incidencias manuales en estas fechas.'
+                  : 'No hay checadas válidas dentro del rango de fechas y filtros activos.' }}
+              </p>
+            </div>
+
+            <div v-else class="overflow-x-auto max-h-80 overflow-y-auto">
+              <table class="w-full text-left border-collapse">
+                <thead class="sticky top-0 z-10">
+                  <tr class="border-b border-charcoal-200 text-[10px] font-bold uppercase tracking-wider text-charcoal-400 bg-charcoal-50">
+                    <th class="py-2.5 px-4">Fecha</th>
+                    <th class="py-2.5 px-3">Entrada</th>
+                    <th class="py-2.5 px-3">Salida</th>
+                    <th class="py-2.5 px-3 text-center">Horas Trab.</th>
+                    <th class="py-2.5 px-3">Terminal / Método</th>
+                    <th class="py-2.5 px-4 text-right">Estatus Pre-Nómina</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-charcoal-100 text-xs">
+                  <tr v-for="d in displayedIncidenciasRows" :key="d.fecha" class="hover:bg-charcoal-50/60 transition-colors">
+                    <td class="py-3 px-4 mono-code whitespace-nowrap">
+                      <div class="font-bold text-charcoal-900">{{ d.fecha }}</div>
+                      <div v-if="d.horario_dia" class="text-[10px] text-charcoal-400 font-normal">{{ d.horario_dia }}</div>
+                    </td>
+                    <td class="py-3 px-3 mono-code whitespace-nowrap">
+                      <div v-if="d.bloques_detalle && d.bloques_detalle.length > 1" class="space-y-1">
+                        <div
+                          v-for="b in d.bloques_detalle"
+                          :key="b.orden_bloque"
+                          class="leading-tight"
+                          :class="b.es_retardo ? 'text-rose-600 font-bold' : (b.total_checadas === 0 ? 'text-charcoal-300 font-normal' : 'text-charcoal-800 font-semibold')">
+                          <span class="text-[10px] text-charcoal-400 mr-1">B{{ b.orden_bloque }}:</span>{{ b.entrada || 'Sin registro' }}
+                        </div>
+                      </div>
+                      <span v-else class="font-semibold" :class="d.es_retardo ? 'text-rose-600' : 'text-charcoal-800'">
+                        {{ d.entrada }}
+                      </span>
+                    </td>
+                    <td class="py-3 px-3 mono-code whitespace-nowrap">
+                      <div v-if="d.bloques_detalle && d.bloques_detalle.length > 1" class="space-y-1">
+                        <div
+                          v-for="b in d.bloques_detalle"
+                          :key="b.orden_bloque"
+                          class="leading-tight"
+                          :class="b.es_incompleto ? 'text-charcoal-500 font-semibold' : (b.total_checadas === 0 ? 'text-charcoal-300' : 'text-charcoal-700')">
+                          {{ b.total_checadas === 0 ? '—' : b.salida }}
+                        </div>
+                      </div>
+                      <span v-else :class="d.es_incompleto ? 'text-charcoal-500 font-semibold' : 'text-charcoal-700'">
+                        {{ d.salida }}
+                      </span>
+                    </td>
+                    <td class="py-3 px-3 text-center mono-code font-bold text-charcoal-900 bg-charcoal-50/50 whitespace-nowrap">
+                      {{ d.horas > 0 ? (d.horas + 'h') : (d.es_incompleto ? '—' : '0h') }}
+                    </td>
+                    <td class="py-3 px-3">
+                      <div class="font-medium text-charcoal-800">{{ d.reloj }}</div>
+                      <div class="inline-flex items-center gap-1 text-[10px] text-charcoal-400">
+                        <i
+                          class="ph"
+                          :class="d.metodo === 'ROSTRO'
+                            ? 'ph-scan'
+                            : (d.metodo === 'HUELLA'
+                              ? 'ph-fingerprint'
+                              : (d.metodo === 'MANUAL' ? 'ph-pencil-simple-line' : 'ph-key'))"></i>
+                        <span>{{ d.metodo }} • {{ d.total_checadas }} reg.</span>
+                      </div>
+                    </td>
+                    <td class="py-3 px-4 text-right">
+                      <div class="flex flex-col items-end gap-0.5">
+                        <template v-if="d.tipos_incidencia && d.tipos_incidencia.length">
+                          <span
+                            v-for="(tipo, idx) in d.tipos_incidencia"
+                            :key="idx"
+                            class="inline-flex items-center gap-1 text-[11px] font-semibold whitespace-nowrap"
+                            :class="tipo.startsWith('RETARDO')
+                              ? 'text-rose-600'
+                              : (tipo.includes('INCOMPLETO') ? 'text-charcoal-600' : 'text-charcoal-700')">
+                            <i
+                              class="ph text-xs"
+                              :class="tipo.startsWith('RETARDO')
+                                ? 'ph-clock-countdown'
+                                : (tipo.includes('INCOMPLETO') ? 'ph-warning-circle' : 'ph-pencil-simple-line')"></i>
+                            <span>{{ tipo }}</span>
+                          </span>
+                        </template>
+                        <span v-else class="inline-flex items-center gap-1 text-[11px] font-semibold text-charcoal-900 whitespace-nowrap">
+                          <i class="ph ph-check-circle text-xs"></i>
+                          <span>ASISTENCIA PUNTUAL</span>
+                        </span>
+                        <span v-if="d.nota_incidencia" class="text-[10px] text-charcoal-400 italic">
+                          "{{ d.nota_incidencia }}"
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
         </div>
       </ModalBase>
 

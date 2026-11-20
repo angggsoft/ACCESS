@@ -53,7 +53,7 @@ export default {
       smtp_user: '',
       smtp_password: '',
       smtp_security: 'STARTTLS',
-      remitente_nombre: 'ACCESS - Control Biométrico',
+      remitente_nombre: 'notificaciones@access.com',
       remitente_email: '',
       destinatario_default: ''
     });
@@ -161,10 +161,14 @@ export default {
       isSavingSmtp.value = true;
       smtpFeedback.value = { type: '', message: '' };
       try {
+        const payload = {
+          ...smtpForm.value,
+          remitente_email: smtpForm.value.smtp_user
+        };
         const res = await fetch('/api/email/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(smtpForm.value)
+          body: JSON.stringify(payload)
         });
         const data = await res.json();
         if (res.ok) {
@@ -192,6 +196,7 @@ export default {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ...smtpForm.value,
+            remitente_email: smtpForm.value.smtp_user,
             to_email: smtpForm.value.destinatario_default || smtpForm.value.smtp_user
           })
         });
